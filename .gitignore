@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets / env
+.env
+.env.*
+
+# Large model weights (place locally; see README)
+projects/**/priors/*.prior
+projects/**/priors/*.chkpt
+projects/**/priors/*.model
+!projects/**/priors/.gitkeep
+
+# Runtime artefacts
+logs/*.log
+logs/*.json
+!logs/.gitkeep
+reports/*.html
+!reports/.gitkeep
+projects/**/output/*.csv
+!projects/**/output/.gitkeep
+!projects/**/output/sampled-sample.csv
+projects/**/output/*.json
+*.chkpt
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,22 @@
+# Critic thresholds and default paths for REINVENT4 Agent MVP
+
+project:
+  config_name: reinvent.toml
+  input_dirname: input
+  output_dirname: output
+
+critic:
+  # Fraction of valid molecules below this → WARNING (or FAIL if zero molecules)
+  min_valid_fraction: 0.80
+  # Duplicate SMILES fraction above this → WARNING
+  max_duplicate_fraction: 0.25
+  # Absolute minimum molecule count for a successful generation
+  min_molecules: 1
+
+reinvent:
+  default_seed: 42
+  executable: reinvent
+
+logging:
+  logs_dirname: logs
+  reports_dirname: reports
