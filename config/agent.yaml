@@ -1,5 +1,29 @@
 # Critic thresholds and default paths for REINVENT4 Agent MVP
 
+planner:
+  # deterministic (default, no network) | llm (OpenAI-compatible, optional)
+  mode: deterministic
+  provider: openai
+  # chat_completions (default, most compatible) | responses
+  api: chat_completions
+  model: gpt-4o-mini
+  temperature: 0.0
+  max_steps: 8
+  api_key_env: OPENAI_API_KEY
+  # Optional OpenAI-compatible base URL (vLLM, Azure-compatible proxies, etc.)
+  base_url: null
+  # Invalid plan / missing key / provider error → deterministic plan + loud warning
+  fallback_on_error: true
+  allowlist:
+    - check_environment
+    - validate_project
+    - prepare_execution
+    - run_reinvent
+    - find_output
+    - analyze_molecules
+    - generate_report
+    - critic_review
+
 project:
   config_name: reinvent.toml
   input_dirname: input

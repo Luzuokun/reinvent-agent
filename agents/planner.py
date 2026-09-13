@@ -1,23 +1,16 @@
-"""Deterministic planning agent (no LLM)."""
+"""Deterministic planning agent (no LLM). Default Phase 1 / Phase 2 planner."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from agents.plan_schema import ALLOWED_STEPS
+
 
 class PlannerAgent:
     """Creates a fixed execution plan from a user goal."""
 
-    DEFAULT_STEPS = [
-        "check_environment",
-        "validate_project",
-        "prepare_execution",
-        "run_reinvent",
-        "find_output",
-        "analyze_molecules",
-        "generate_report",
-        "critic_review",
-    ]
+    DEFAULT_STEPS = list(ALLOWED_STEPS)
 
     def create_plan(
         self,
@@ -54,4 +47,7 @@ class PlannerAgent:
             "skip_reinvent": skip_reinvent,
             "steps": steps,
             "notes": notes,
+            "planner": "deterministic",
+            "planner_fallback": False,
+            "planner_warnings": [],
         }

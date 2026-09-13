@@ -3,12 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.2 scope:** check environment → validate project → (optionally) run
-REINVENT4 sampling → analyze molecules → HTML report → critic verdict →
-structured `logs/runs/<timestamp>/result.json`.
+**v0.3 scope:** same Phase 1 pipeline as v0.2, plus an **optional** LLM planner
+(`--planner llm`). Deterministic planning is still the default. See
+[docs/phase2-llm-planner.md](docs/phase2-llm-planner.md).
 
-No LLM tool-calling yet. Planner / Executor / Critic are deterministic Python
-classes. Agents never execute arbitrary shell; they only call predefined tools.
+No LLM tool-calling. The model may only return a JSON plan of allowlisted step
+names. Agents never execute arbitrary shell; they only call predefined tools.
 
 ## Requirements
 
@@ -24,6 +24,8 @@ them into the same `reinvent4` env if missing:
 ```bash
 conda activate reinvent4
 pip install -r requirements.txt
+# optional, only for --planner llm:
+pip install 'openai>=1.40'
 ```
 
 ## Place the prior (required for real runs)
@@ -73,6 +75,19 @@ python main.py \
   --project projects/demo_project \
   --goal "Run the REINVENT4 workflow and analyze generated molecules." \
   --approve-run
+```
+
+Optional LLM planner (falls back to deterministic with a loud warning if the
+API key is missing, the provider errors, or the plan fails validation):
+
+```bash
+export OPENAI_API_KEY=sk-...
+python main.py \
+  --project projects/demo_project \
+  --goal "Analyze existing sample molecules." \
+  --planner llm \
+  --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
 ```
 
 Non-interactive approved run (scripts / CI):
@@ -174,10 +189,11 @@ Run from the repo root with `conda activate reinvent4`.
 ## Layout
 
 ```text
-agents/          Planner, Executor, Critic (deterministic)
+agents/          Planner (deterministic default), optional LLM planner, Executor, Critic
 tools/           Validated environment / reinvent / files / analysis / artefacts
 analysis/        Molecule stats + HTML report
 projects/        Sandboxed REINVENT projects (demo_project)
+docs/            Phase design notes (phase2-llm-planner.md)
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml
 main.py
