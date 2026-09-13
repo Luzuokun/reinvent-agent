@@ -107,9 +107,14 @@ class ExecutionAgent:
                     results["steps"]["analyze_molecules"] = {
                         "ok": False,
                         "errors": [msg],
+                        "analysis_source": self._analysis_source(results, plan),
+                        "from_fresh_reinvent": False,
                     }
                 else:
                     analysis = analyze_molecules(csv_path)
+                    source = self._analysis_source(results, plan)
+                    analysis["analysis_source"] = source
+                    analysis["from_fresh_reinvent"] = source == "fresh_run"
                     results["steps"]["analyze_molecules"] = analysis
                     results["warnings"].extend(analysis.get("warnings") or [])
                     if not analysis.get("ok"):
@@ -134,6 +139,9 @@ class ExecutionAgent:
         goal: str,
         critic: dict[str, Any],
     ) -> dict[str, Any]:
+        analysis = results.get("steps", {}).get("analyze_molecules", {}) or {}
+        execution = results.get("steps", {}).get("run_reinvent", {}) or {}
+        dry_run = bool(execution.get("skipped"))
         payload = {
             "goal": goal,
             "project": {
@@ -142,16 +150,28 @@ class ExecutionAgent:
             },
             "environment": results.get("steps", {}).get("check_environment", {}),
             "validation": results.get("steps", {}).get("validate_project", {}),
-            "execution": results.get("steps", {}).get("run_reinvent", {}),
+            "execution": execution,
             "inventory": results.get("steps", {}).get("find_output", {}),
-            "analysis": results.get("steps", {}).get("analyze_molecules", {}),
+            "analysis": analysis,
             "critic": critic,
             "warnings": results.get("warnings", []),
             "errors": results.get("errors", []),
+            "dry_run": dry_run,
+            "analysis_source": analysis.get("analysis_source"),
         }
         report_meta = generate_html_report(payload)
         results["steps"]["generate_report"] = report_meta
         return report_meta
+
+    @staticmethod
+    def _analysis_source(results: dict[str, Any], plan: dict[str, Any]) -> str:
+        """Label whether molecule stats came from a fresh REINVENT run or an existing CSV."""
+        run = results.get("steps", {}).get("run_reinvent") or {}
+        if run.get("success") and not run.get("skipped"):
+            return "fresh_run"
+        # Dry-run (no --approve-run), offline --skip-reinvent, or failed/aborted run
+        # all analyze whatever CSV is already on disk.
+        return "existing_csv"
 
     @staticmethod
     def _resolve_csv(

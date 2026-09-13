@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,19 +14,15 @@ from typing import Any
 from tools import REPO_ROOT, load_agent_config, resolve_under_root
 
 
-def run_reinvent(
+def prepare_reinvent_command(
     config_path: str | Path,
     *,
-    approve: bool,
     seed: int | None = None,
     project_dir: str | Path | None = None,
     logs_dir: str | Path | None = None,
     agent_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run a validated ``reinvent`` command, or prepare without executing.
-
-    Requires ``approve=True`` (CLI ``--approve-run``) to launch the job.
-    """
+    """Build the predefined REINVENT argv without executing it."""
     cfg = agent_config or load_agent_config()
     executable = cfg.get("reinvent", {}).get("executable", "reinvent")
     default_seed = int(cfg.get("reinvent", {}).get("default_seed", 42))
@@ -36,18 +33,15 @@ def run_reinvent(
         project_dir = config_path.parent
     project_dir = Path(project_dir).expanduser().resolve()
 
-    # Keep config inside project root
     try:
         resolve_under_root(project_dir, config_path.relative_to(project_dir))
     except ValueError:
         return {
-            "approved": bool(approve),
-            "skipped": False,
-            "success": False,
-            "exit_code": 2,
-            "runtime_seconds": 0.0,
-            "config_path": str(config_path),
+            "ok": False,
+            "command": [],
             "cwd": str(project_dir),
+            "config_path": str(config_path),
+            "seed": seed,
             "message": f"Config path is outside project directory: {config_path}",
         }
 
@@ -70,9 +64,8 @@ def run_reinvent(
         str(seed),
         str(config_path),
     ]
-
-    prepared = {
-        "approved": bool(approve),
+    return {
+        "ok": True,
         "command": command,
         "cwd": str(project_dir),
         "config_path": str(config_path),
@@ -81,6 +74,87 @@ def run_reinvent(
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
         "reinvent_on_path": reinvent_bin is not None,
+        "executable": reinvent_bin or executable,
+    }
+
+
+def confirm_reinvent_launch(
+    prepared: dict[str, Any],
+    *,
+    assume_yes: bool = False,
+    stdin=None,
+    stdout=None,
+) -> bool:
+    """Print the predefined command and require interactive confirmation.
+
+    Non-interactive sessions must pass ``assume_yes=True`` (CLI ``--yes``).
+    """
+    stdin = sys.stdin if stdin is None else stdin
+    stdout = sys.stdout if stdout is None else stdout
+    command = prepared.get("command") or []
+    cwd = prepared.get("cwd", "")
+    print("\n[Human approval required]", file=stdout)
+    print("The agent is ready to execute this predefined command:", file=stdout)
+    print(f"  cwd: {cwd}", file=stdout)
+    print(f"  cmd: {' '.join(str(c) for c in command)}", file=stdout)
+    print("Estimated task: molecular sampling (CPU/GPU depending on TOML).", file=stdout)
+    if assume_yes:
+        print("Proceeding due to --yes.", file=stdout)
+        return True
+    if not hasattr(stdin, "isatty") or not stdin.isatty():
+        print(
+            "Non-interactive stdin: re-run with --approve-run --yes to launch.",
+            file=stdout,
+        )
+        return False
+    print("Proceed? [y/N]: ", end="", file=stdout, flush=True)
+    reply = stdin.readline().strip().lower()
+    return reply in ("y", "yes")
+
+
+def run_reinvent(
+    config_path: str | Path,
+    *,
+    approve: bool,
+    seed: int | None = None,
+    project_dir: str | Path | None = None,
+    logs_dir: str | Path | None = None,
+    agent_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run a validated ``reinvent`` command, or prepare without executing.
+
+    Requires ``approve=True`` (CLI ``--approve-run``) to launch the job.
+    """
+    prepared_cmd = prepare_reinvent_command(
+        config_path,
+        seed=seed,
+        project_dir=project_dir,
+        logs_dir=logs_dir,
+        agent_config=agent_config,
+    )
+    if not prepared_cmd.get("ok"):
+        return {
+            "approved": bool(approve),
+            "skipped": False,
+            "success": False,
+            "exit_code": 2,
+            "runtime_seconds": 0.0,
+            "config_path": prepared_cmd.get("config_path"),
+            "cwd": prepared_cmd.get("cwd"),
+            "command": prepared_cmd.get("command") or [],
+            "message": prepared_cmd.get("message", "Failed to prepare REINVENT command"),
+        }
+
+    prepared = {
+        "approved": bool(approve),
+        "command": prepared_cmd["command"],
+        "cwd": prepared_cmd["cwd"],
+        "config_path": prepared_cmd["config_path"],
+        "seed": prepared_cmd["seed"],
+        "log_path": prepared_cmd["log_path"],
+        "stdout_path": prepared_cmd["stdout_path"],
+        "stderr_path": prepared_cmd["stderr_path"],
+        "reinvent_on_path": prepared_cmd["reinvent_on_path"],
     }
 
     if not approve:
@@ -93,14 +167,20 @@ def run_reinvent(
             "message": "REINVENT not launched (missing --approve-run).",
         }
 
-    if reinvent_bin is None:
+    config_path = Path(prepared_cmd["config_path"])
+    project_dir = Path(prepared_cmd["cwd"])
+    command = prepared_cmd["command"]
+    stdout_path = Path(prepared_cmd["stdout_path"])
+    stderr_path = Path(prepared_cmd["stderr_path"])
+
+    if not prepared_cmd["reinvent_on_path"]:
         return {
             **prepared,
             "skipped": False,
             "success": False,
             "exit_code": 127,
             "runtime_seconds": 0.0,
-            "message": f"Executable not found on PATH: {executable}",
+            "message": f"Executable not found on PATH: {prepared_cmd.get('executable')}",
         }
 
     if not config_path.is_file():

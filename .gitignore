@@ -24,6 +24,7 @@ projects/**/priors/*.model
 # Runtime artefacts
 logs/*.log
 logs/*.json
+logs/runs/
 !logs/.gitkeep
 reports/*.html
 !reports/.gitkeep

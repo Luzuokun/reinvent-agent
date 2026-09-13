@@ -81,6 +81,30 @@ def _render_html(payload: dict[str, Any]) -> str:
         "FAIL": "fail",
     }.get(str(critic_status).upper(), "muted")
 
+    dry_run = bool(payload.get("dry_run") or (isinstance(execution, dict) and execution.get("skipped")))
+    analysis_source = payload.get("analysis_source") or (
+        (analysis or {}).get("analysis_source") if isinstance(analysis, dict) else None
+    )
+    csv_path = (analysis or {}).get("csv_path") if isinstance(analysis, dict) else None
+
+    banner = ""
+    if dry_run or analysis_source == "existing_csv":
+        csv_note = _esc(csv_path) if csv_path else "(path unavailable)"
+        if dry_run:
+            banner_text = (
+                "Dry-run: REINVENT was not executed. "
+                f"Analysis below is from existing output file: {csv_note}"
+            )
+        else:
+            banner_text = (
+                "Analysis below is from an existing output file "
+                f"(not a fresh REINVENT generation): {csv_note}"
+            )
+        banner = (
+            f"<div class='banner warn-banner' role='status'>"
+            f"<strong>Notice:</strong> {banner_text}</div>"
+        )
+
     parts = [
         _section("Project", _kv_table({"goal": goal, **(project if isinstance(project, dict) else {"project": project})})),
         _section("Environment", _kv_table(environment if isinstance(environment, dict) else {})),
@@ -177,6 +201,18 @@ def _render_html(payload: dict[str, Any]) -> str:
     .status.warn {{ color: var(--warn); }}
     .status.fail {{ color: var(--fail); }}
     .muted {{ color: var(--muted); }}
+    .banner {{
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--line);
+      background: #fff6e0;
+      color: var(--warn);
+      font-size: 0.98rem;
+    }}
+    .banner.warn-banner {{
+      border-color: #e0c48a;
+    }}
     ul {{ margin: 0.25rem 0 0 1.1rem; }}
   </style>
 </head>
@@ -184,6 +220,7 @@ def _render_html(payload: dict[str, Any]) -> str:
   <main>
     <h1>REINVENT4 Agent Report</h1>
     <p class="subtitle">Deterministic MVP workflow summary — generated locally.</p>
+    {banner}
     {''.join(parts)}
   </main>
 </body>

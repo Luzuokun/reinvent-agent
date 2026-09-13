@@ -11,6 +11,8 @@ from agents.critic import CriticAgent
 from agents.executor import ExecutionAgent
 from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
+from tools.artifacts import create_run_dir, write_run_result
+from tools.reinvent import confirm_reinvent_launch, prepare_reinvent_command
 
 
 def _configure_logging(logs_dir: Path) -> Path:
@@ -33,6 +35,17 @@ def _banner(text: str) -> None:
     print(f"\n{line}\n{text}\n{line}")
 
 
+def _exit_code_for_critic(status: str) -> int:
+    """Map critic status to process exit code.
+
+    PASS / WARNING → 0 (workflow completed; WARNING still needs human review)
+    FAIL → 1
+    """
+    if str(status).upper() == "FAIL":
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="REINVENT4 Agent MVP — deterministic workflow"
@@ -51,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--approve-run",
         action="store_true",
         help="Explicit human approval to launch the predefined REINVENT command",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip interactive Proceed? prompt when used with --approve-run",
     )
     parser.add_argument(
         "--skip-reinvent",
@@ -80,8 +98,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     agent_config = load_agent_config(Path(args.config))
     logs_dirname = agent_config.get("logging", {}).get("logs_dirname", "logs")
-    log_path = _configure_logging(REPO_ROOT / logs_dirname)
+    logs_dir = REPO_ROOT / logs_dirname
+    log_path = _configure_logging(logs_dir)
     logger = logging.getLogger("main")
+    run_dir = create_run_dir(logs_dir)
 
     project_dir = Path(args.project)
     if not project_dir.is_absolute():
@@ -89,16 +109,36 @@ def main(argv: list[str] | None = None) -> int:
     else:
         project_dir = project_dir.resolve()
 
+    config_name = agent_config.get("project", {}).get("config_name", "reinvent.toml")
+    config_path = project_dir / config_name
+
     _banner("REINVENT4 AGENT")
     print(f"Project: {project_dir}")
     print(f"Goal:    {args.goal}")
     print(f"Log:     {log_path}")
+    print(f"Run dir: {run_dir}")
+
+    approve_run = bool(args.approve_run)
+    if approve_run and not args.skip_reinvent:
+        prepared = prepare_reinvent_command(
+            config_path,
+            seed=args.seed,
+            project_dir=project_dir,
+            logs_dir=logs_dir,
+            agent_config=agent_config,
+        )
+        if not prepared.get("ok"):
+            print(f"Cannot prepare REINVENT command: {prepared.get('message')}")
+            approve_run = False
+        elif not confirm_reinvent_launch(prepared, assume_yes=args.yes):
+            print("Human declined or confirmation unavailable — REINVENT will not run.")
+            approve_run = False
 
     planner = PlannerAgent()
     plan = planner.create_plan(
         args.goal,
         project_dir=str(project_dir),
-        approve_run=args.approve_run,
+        approve_run=approve_run,
         skip_reinvent=args.skip_reinvent,
     )
 
@@ -112,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     results = executor.execute(
         plan,
         project_dir=project_dir,
-        approve_run=args.approve_run,
+        approve_run=approve_run,
         csv_override=args.csv,
         seed=args.seed,
     )
@@ -142,6 +182,21 @@ def main(argv: list[str] | None = None) -> int:
     analysis = results.get("steps", {}).get("analyze_molecules") or {}
     if analysis:
         print("\n[Molecule Analysis]")
+        source = analysis.get("analysis_source")
+        csv_path = analysis.get("csv_path")
+        if source == "existing_csv" or (run and run.get("skipped")):
+            print(
+                "Source:   existing CSV "
+                "(REINVENT was not executed — not a fresh generation)"
+            )
+            if csv_path:
+                print(f"CSV:      {csv_path}")
+        elif source == "fresh_run":
+            print("Source:   fresh REINVENT run")
+            if csv_path:
+                print(f"CSV:      {csv_path}")
+        elif csv_path:
+            print(f"CSV:      {csv_path}")
         if analysis.get("ok"):
             print(f"Total:    {analysis.get('total_molecules')}")
             print(f"Unique:   {analysis.get('unique_molecules')}")
@@ -171,14 +226,34 @@ def main(argv: list[str] | None = None) -> int:
     print("\n[Report]")
     print(f"Wrote: {report_meta.get('report_path')}")
 
-    summary_path = REPO_ROOT / logs_dirname / "last_run_summary.json"
-    summary_path.write_text(dumps_pretty({"results": results, "critic": verdict}), encoding="utf-8")
+    exit_code = _exit_code_for_critic(str(verdict.get("status", "FAIL")))
+    result_path = write_run_result(
+        run_dir,
+        goal=args.goal,
+        plan=plan,
+        results=results,
+        critic=verdict,
+        report=report_meta,
+        exit_code=exit_code,
+    )
+    summary_path = logs_dir / "last_run_summary.json"
+    summary_path.write_text(
+        dumps_pretty(
+            {
+                "run_dir": str(run_dir),
+                "result_json": str(result_path),
+                "results": results,
+                "critic": verdict,
+            }
+        ),
+        encoding="utf-8",
+    )
+    logger.info("Wrote run artefact %s", result_path)
     logger.info("Wrote summary %s", summary_path)
+    print(f"Result: {result_path}")
 
     _banner("DONE")
-    if verdict["status"] == "FAIL":
-        return 1
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
