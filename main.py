@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agents.critic import CriticAgent
 from agents.executor import ExecutionAgent
+from agents.llm_planner import LLMPlannerAgent, LLMPlannerError
 from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
 from tools.artifacts import create_run_dir, write_run_result
@@ -48,7 +49,7 @@ def _exit_code_for_critic(status: str) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="REINVENT4 Agent MVP — deterministic workflow"
+        description="REINVENT4 Agent MVP — Planning → Execution → Tools → Critic"
     )
     parser.add_argument(
         "--project",
@@ -90,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         default=str(REPO_ROOT / "config" / "agent.yaml"),
         help="Path to agent.yaml",
+    )
+    parser.add_argument(
+        "--planner",
+        choices=("deterministic", "llm"),
+        default=None,
+        help=(
+            "Planner backend: deterministic (default) or llm. "
+            "Overrides config planner.mode."
+        ),
     )
     return parser
 
@@ -134,15 +144,25 @@ def main(argv: list[str] | None = None) -> int:
             print("Human declined or confirmation unavailable — REINVENT will not run.")
             approve_run = False
 
-    planner = PlannerAgent()
-    plan = planner.create_plan(
-        args.goal,
-        project_dir=str(project_dir),
-        approve_run=approve_run,
-        skip_reinvent=args.skip_reinvent,
-    )
+    try:
+        plan = _create_plan(
+            args,
+            agent_config,
+            project_dir=str(project_dir),
+            approve_run=approve_run,
+        )
+    except LLMPlannerError as exc:
+        print(f"\nERROR: {exc}")
+        logger.error("LLM planner failed without fallback: %s", exc)
+        return 2
 
     print("\n[Planning Agent]")
+    planner_name = plan.get("planner") or "deterministic"
+    print(f"Planner: {planner_name}")
+    if plan.get("planner_fallback"):
+        print("WARNING: LLM planner failed — using deterministic plan (fallback).")
+        for warning in plan.get("planner_warnings") or []:
+            print(f"WARNING: {warning}")
     print(f"Steps: {', '.join(plan['steps'])}")
     for note in plan.get("notes") or []:
         print(f"Note:  {note}")
@@ -254,6 +274,36 @@ def main(argv: list[str] | None = None) -> int:
 
     _banner("DONE")
     return exit_code
+
+
+def _create_plan(
+    args: argparse.Namespace,
+    agent_config: dict,
+    *,
+    project_dir: str,
+    approve_run: bool,
+) -> dict:
+    planner_cfg = agent_config.get("planner") or {}
+    mode = args.planner or planner_cfg.get("mode") or "deterministic"
+    mode = str(mode).strip().lower()
+    if mode not in ("deterministic", "llm"):
+        raise LLMPlannerError(
+            f"Unknown planner mode {mode!r}; use deterministic or llm"
+        )
+
+    if mode == "llm":
+        planner: PlannerAgent | LLMPlannerAgent = LLMPlannerAgent(
+            agent_config=agent_config
+        )
+    else:
+        planner = PlannerAgent()
+
+    return planner.create_plan(
+        args.goal,
+        project_dir=project_dir,
+        approve_run=approve_run,
+        skip_reinvent=args.skip_reinvent,
+    )
 
 
 if __name__ == "__main__":

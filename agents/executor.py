@@ -8,6 +8,7 @@ from typing import Any
 
 from analysis.molecule_analysis import analyze_molecules
 from analysis.report import generate_html_report
+from agents.plan_schema import PlanValidationError, resolve_plan_csv_path
 from tools.environment import check_environment
 from tools.files import validate_project
 from tools.reinvent import find_output_files, run_reinvent
@@ -44,7 +45,11 @@ class ExecutionAgent:
             "errors": [],
         }
 
-        for step in plan.get("steps", []):
+        for raw_step in plan.get("steps", []):
+            step = raw_step["name"] if isinstance(raw_step, dict) else raw_step
+            if not isinstance(step, str):
+                results["warnings"].append(f"Invalid plan step skipped: {raw_step!r}")
+                continue
             logger.info("Executing step: %s", step)
             if step == "check_environment":
                 env = check_environment()
@@ -76,6 +81,17 @@ class ExecutionAgent:
                 }
 
             elif step == "run_reinvent":
+                if plan.get("skip_reinvent"):
+                    results["steps"]["run_reinvent"] = {
+                        "approved": False,
+                        "skipped": True,
+                        "success": False,
+                        "exit_code": None,
+                        "runtime_seconds": 0.0,
+                        "command": [],
+                        "message": "REINVENT skipped (--skip-reinvent); plan step ignored.",
+                    }
+                    continue
                 run_result = run_reinvent(
                     config_path,
                     approve=approve_run,
@@ -100,6 +116,7 @@ class ExecutionAgent:
                     csv_override=csv_override,
                     config_path=config_path,
                     project_dir=project_dir,
+                    output_dir=output_dir,
                 )
                 if csv_path is None:
                     msg = "No CSV found for analysis"
@@ -180,9 +197,23 @@ class ExecutionAgent:
         csv_override: str | Path | None,
         config_path: Path,
         project_dir: Path,
+        output_dir: Path | None = None,
     ) -> Path | None:
         if csv_override is not None:
             return Path(csv_override).expanduser().resolve()
+
+        if output_dir is None:
+            output_dir = project_dir / "output"
+        planned_csv = _planned_csv_path(results.get("plan") or {})
+        if planned_csv:
+            try:
+                return resolve_plan_csv_path(
+                    planned_csv, project_dir=project_dir, output_dir=output_dir
+                )
+            except PlanValidationError as exc:
+                results.setdefault("warnings", []).append(
+                    f"Ignoring unsafe or invalid plan csv_path: {exc}"
+                )
 
         inventory = results.get("steps", {}).get("find_output") or {}
         csv_files = inventory.get("csv_files") or []
@@ -203,3 +234,15 @@ class ExecutionAgent:
         if resolved and Path(resolved).is_file():
             return Path(resolved)
         return None
+
+
+def _planned_csv_path(plan: dict[str, Any]) -> str | None:
+    """Read the optional validated csv_path from a plan (never from argv)."""
+    step_params = plan.get("step_params") or {}
+    nested = (step_params.get("analyze_molecules") or {}).get("csv_path")
+    if isinstance(nested, str) and nested.strip():
+        return nested
+    top = plan.get("csv_path")
+    if isinstance(top, str) and top.strip():
+        return top
+    return None
