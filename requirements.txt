@@ -1,3 +1,3 @@
 pandas>=2.0
 PyYAML>=6.0
-# optional: openai>=1.40  (only for --planner llm / --critic llm)
+# optional: openai>=1.40  (OpenAI SDK; also used for xAI / Gemini OpenAI-compat)

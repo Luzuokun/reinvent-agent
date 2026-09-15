@@ -34,7 +34,8 @@ the HTML report or process exit code sees it.
 |-----------|-----------------|
 | `agents/critic.py` | Unchanged algorithm; still the default |
 | `agents/critic_schema.py` | Evidence summary + strict verdict validator |
-| `agents/llm_critic.py` | OpenAI-compatible Chat Completions or Responses API |
+| `agents/llm_critic.py` | LLM critic; client via `agents/llm_client.py` |
+| `agents/llm_client.py` | Shared OpenAI-compatible client (openai / xai / gemini / openai_compatible) |
 | `agents/executor.py` | Unchanged |
 | `agents/planner.py` / `llm_planner.py` | Unchanged |
 
@@ -100,12 +101,12 @@ to exit instead (process exit code `2`).
 ```yaml
 critic:
   mode: deterministic          # or llm
-  provider: openai             # optional; falls back to planner.* if omitted
+  provider: openai             # openai | xai | gemini | openai_compatible
   api: chat_completions        # or responses
-  model: gpt-4o-mini
+  model: null                  # null → provider default (or planner.model)
   temperature: 0.0
-  api_key_env: OPENAI_API_KEY
-  base_url: null               # optional OpenAI-compatible endpoint
+  api_key_env: null            # null → provider default env var
+  base_url: null               # null → provider default endpoint
   fallback_on_error: true
   min_valid_fraction: 0.80
   max_duplicate_fraction: 0.25
@@ -113,7 +114,10 @@ critic:
 ```
 
 `--critic {deterministic,llm}` overrides `critic.mode`. Both default to
-`deterministic`.
+`deterministic`. `--provider` overrides planner and critic provider together.
+
+Keys are environment variables only (never files in the repo). `.env` is
+gitignored.
 
 ## How to run
 
@@ -124,7 +128,7 @@ Install the optional SDK only if you want the LLM critic or planner
 conda activate reinvent4
 pip install -r requirements.txt
 pip install 'openai>=1.40'    # or: pip install '.[llm]'
-export OPENAI_API_KEY=sk-...
+export OPENAI_API_KEY=sk-...  # or XAI_API_KEY / GEMINI_API_KEY
 ```
 
 Deterministic (Phase 1, unchanged):
@@ -163,10 +167,23 @@ OpenAI-compatible local server (same pattern as the planner):
 ```yaml
 critic:
   mode: llm
+  provider: openai_compatible
   api: chat_completions
   model: local-model
   base_url: http://127.0.0.1:8000/v1
-  api_key_env: OPENAI_API_KEY
+  api_key_env: LOCAL_API_KEY
+```
+
+xAI:
+
+```bash
+export XAI_API_KEY=...
+python main.py \
+  --project projects/demo_project \
+  --goal "Analyze existing sample molecules." \
+  --planner llm --critic llm --provider xai \
+  --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
 ```
 
 ## Tests

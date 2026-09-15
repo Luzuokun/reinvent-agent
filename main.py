@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agents.critic import CriticAgent
 from agents.executor import ExecutionAgent
+from agents.llm_client import SUPPORTED_PROVIDERS, overlay_provider
 from agents.llm_critic import LLMCriticAgent, LLMCriticError
 from agents.llm_planner import LLMPlannerAgent, LLMPlannerError
 from agents.planner import PlannerAgent
@@ -111,12 +112,26 @@ def build_parser() -> argparse.ArgumentParser:
             "Overrides config critic.mode."
         ),
     )
+    parser.add_argument(
+        "--provider",
+        choices=SUPPORTED_PROVIDERS,
+        default=None,
+        help=(
+            "LLM provider for --planner llm / --critic llm "
+            "(openai, xai, gemini, openai_compatible). "
+            "Overrides planner.provider and critic.provider; "
+            "preset base_url and API key env apply unless yaml overrides them."
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    agent_config = load_agent_config(Path(args.config))
+    agent_config = overlay_provider(
+        load_agent_config(Path(args.config)),
+        getattr(args, "provider", None),
+    )
     logs_dirname = agent_config.get("logging", {}).get("logs_dirname", "logs")
     logs_dir = REPO_ROOT / logs_dirname
     log_path = _configure_logging(logs_dir)
@@ -314,7 +329,9 @@ def _create_plan(
 
     if mode == "llm":
         planner: PlannerAgent | LLMPlannerAgent = LLMPlannerAgent(
-            agent_config=agent_config
+            agent_config=overlay_provider(
+                agent_config, getattr(args, "provider", None)
+            )
         )
     else:
         planner = PlannerAgent()
@@ -342,7 +359,9 @@ def _review_with_critic(
 
     if mode == "llm":
         critic: CriticAgent | LLMCriticAgent = LLMCriticAgent(
-            agent_config=agent_config
+            agent_config=overlay_provider(
+                agent_config, getattr(args, "provider", None)
+            )
         )
     else:
         critic = CriticAgent(agent_config=agent_config)

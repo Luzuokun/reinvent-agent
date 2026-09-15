@@ -1,16 +1,30 @@
 # Critic thresholds and default paths for REINVENT4 Agent MVP
+#
+# LLM keys are NEVER stored here. Export them (or use a gitignored .env):
+#   openai:  OPENAI_API_KEY
+#   xai:     XAI_API_KEY  (alias: GROK_API_KEY)
+#   gemini:  GEMINI_API_KEY  (alias: GOOGLE_API_KEY)
+#   openai_compatible: whatever name you set in api_key_env
 
 planner:
   # deterministic (default, no network) | llm (OpenAI-compatible, optional)
   mode: deterministic
+  # openai | xai | gemini | openai_compatible
   provider: openai
   # chat_completions (default, most compatible) | responses
   api: chat_completions
-  model: gpt-4o-mini
+  # null → provider default (openai: gpt-4o-mini, xai: grok-4, gemini: gemini-2.5-flash)
+  # Override examples: grok-4 / grok-4.6 (xAI), gemini-2.5-flash / gemini-3.8-flash
+  model: null
   temperature: 0.0
   max_steps: 8
-  api_key_env: OPENAI_API_KEY
-  # Optional OpenAI-compatible base URL (vLLM, Azure-compatible proxies, etc.)
+  # null → provider default env var (OPENAI_API_KEY / XAI_API_KEY / GEMINI_API_KEY)
+  api_key_env: null
+  # null → provider default URL
+  #   openai: SDK default (api.openai.com)
+  #   xai: https://api.x.ai/v1
+  #   gemini: https://generativelanguage.googleapis.com/v1beta/openai/
+  # openai_compatible requires an explicit base_url + api_key_env + model
   base_url: null
   # Invalid plan / missing key / provider error → deterministic plan + loud warning
   fallback_on_error: true
@@ -32,11 +46,12 @@ project:
 critic:
   # deterministic (default, no network) | llm (OpenAI-compatible, optional)
   mode: deterministic
+  # openai | xai | gemini | openai_compatible  (omit to inherit planner.provider)
   provider: openai
   api: chat_completions
-  model: gpt-4o-mini
+  model: null
   temperature: 0.0
-  api_key_env: OPENAI_API_KEY
+  api_key_env: null
   base_url: null
   # Invalid verdict / missing key / provider error → deterministic critic + loud warning
   fallback_on_error: true

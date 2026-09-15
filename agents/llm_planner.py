@@ -4,6 +4,9 @@ Calls an OpenAI-compatible Chat Completions or Responses API and returns a
 Plan dict. Model text is parsed as JSON, then passed through
 ``validate_plan``. It is never interpolated into argv or a shell.
 
+Client construction is centralized in ``agents.llm_client`` (openai / xai /
+gemini / openai_compatible).
+
 On missing API key, invalid plan, or provider error the default is to fall
 back to the deterministic planner with a loud warning (resilience). Set
 ``planner.fallback_on_error: false`` to fail instead.
@@ -13,10 +16,16 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Callable
 
+from agents.llm_client import (
+    LLMClientError,
+    LLMSettings,
+    build_client,
+    complete_structured,
+    resolve_llm_settings,
+)
 from agents.plan_schema import (
     ALLOWED_STEPS,
     LLM_PLAN_JSON_SCHEMA,
@@ -73,17 +82,33 @@ class LLMPlannerAgent:
         *,
         client: Any | None = None,
         complete_fn: CompleteFn | None = None,
+        provider_override: str | None = None,
     ) -> None:
         self.agent_config = agent_config or {}
         planner_cfg = self.agent_config.get("planner") or {}
-        self.provider = str(planner_cfg.get("provider") or "openai")
-        self.api = str(planner_cfg.get("api") or "chat_completions").lower()
-        self.model = str(planner_cfg.get("model") or "gpt-4o-mini")
-        self.temperature = float(planner_cfg.get("temperature", 0.0))
+        self._settings_error: BaseException | None = None
+        self.llm: LLMSettings | None
+        try:
+            self.llm = resolve_llm_settings(
+                planner_cfg, provider_override=provider_override
+            )
+        except LLMClientError as exc:
+            self.llm = None
+            self._settings_error = exc
+        self.provider = (
+            self.llm.provider if self.llm is not None else str(planner_cfg.get("provider") or "openai")
+        )
+        self.api = self.llm.api if self.llm is not None else str(planner_cfg.get("api") or "chat_completions").lower()
+        self.model = self.llm.model if self.llm is not None else str(planner_cfg.get("model") or "gpt-4o-mini")
+        self.temperature = (
+            self.llm.temperature if self.llm is not None else float(planner_cfg.get("temperature", 0.0))
+        )
         self.max_steps = int(planner_cfg.get("max_steps") or len(ALLOWED_STEPS))
         self.allowlist = resolve_allowlist(planner_cfg.get("allowlist"))
-        self.api_key_env = str(planner_cfg.get("api_key_env") or "OPENAI_API_KEY")
-        self.base_url = planner_cfg.get("base_url") or None
+        self.api_key_env = (
+            self.llm.api_key_env if self.llm is not None else str(planner_cfg.get("api_key_env") or "OPENAI_API_KEY")
+        )
+        self.base_url = self.llm.base_url if self.llm is not None else (planner_cfg.get("base_url") or None)
         self.fallback_on_error = bool(planner_cfg.get("fallback_on_error", True))
         self._client = client
         self._complete_fn = complete_fn
@@ -180,108 +205,34 @@ class LLMPlannerAgent:
     def _complete(self, messages: list[dict[str, str]]) -> str:
         if self._complete_fn is not None:
             return self._complete_fn(messages)
+        settings = self._require_settings()
         client = self._ensure_client()
-        if self.api in ("responses", "response"):
-            return self._complete_responses(client, messages)
-        return self._complete_chat(client, messages)
+        try:
+            return complete_structured(
+                client,
+                settings,
+                messages,
+                schema_name="reinvent_agent_plan",
+                json_schema=LLM_PLAN_JSON_SCHEMA,
+            )
+        except LLMClientError as exc:
+            raise LLMPlannerError(str(exc)) from exc
+
+    def _require_settings(self) -> LLMSettings:
+        if self._settings_error is not None:
+            raise LLMPlannerError(str(self._settings_error)) from self._settings_error
+        if self.llm is None:
+            raise LLMPlannerError("LLM planner settings are not resolved")
+        return self.llm
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
             return self._client
-        api_key = os.environ.get(self.api_key_env)
-        if not api_key:
-            raise LLMPlannerError(
-                f"Missing API key: set environment variable {self.api_key_env}"
-            )
+        settings = self._require_settings()
         try:
-            from openai import OpenAI
-        except ImportError as exc:  # pragma: no cover - optional extra
-            raise LLMPlannerError(
-                "The openai package is not installed. "
-                "Install it with: pip install 'openai>=1.40'"
-            ) from exc
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if self.base_url:
-            kwargs["base_url"] = str(self.base_url)
-        return OpenAI(**kwargs)
-
-    def _complete_chat(self, client: Any, messages: list[dict[str, str]]) -> str:
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "temperature": self.temperature,
-            "messages": messages,
-            "max_tokens": 1024,
-        }
-        schema_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "reinvent_agent_plan",
-                "strict": True,
-                "schema": LLM_PLAN_JSON_SCHEMA,
-            },
-        }
-        try:
-            response = client.chat.completions.create(
-                **kwargs, response_format=schema_format
-            )
-        except Exception as exc:  # noqa: BLE001
-            hint = str(exc).lower()
-            if any(token in hint for token in ("response_format", "json_schema", "structured")):
-                logger.warning("Structured json_schema not accepted; retrying as json_object.")
-                response = client.chat.completions.create(
-                    **kwargs, response_format={"type": "json_object"}
-                )
-            else:
-                raise
-        content = _chat_content(response)
-        if not content:
-            raise LLMPlannerError("Empty Chat Completions response")
-        return content
-
-    def _complete_responses(self, client: Any, messages: list[dict[str, str]]) -> str:
-        # Flatten chat messages into Responses API input items.
-        input_items = [
-            {"role": m["role"], "content": m["content"]} for m in messages
-        ]
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "temperature": self.temperature,
-            "input": input_items,
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": "reinvent_agent_plan",
-                    "strict": True,
-                    "schema": LLM_PLAN_JSON_SCHEMA,
-                }
-            },
-        }
-        response = client.responses.create(**kwargs)
-        text = getattr(response, "output_text", None)
-        if not text:
-            text = _responses_text(response)
-        if not text:
-            raise LLMPlannerError("Empty Responses API output")
-        return text
-
-
-def _chat_content(response: Any) -> str:
-    choices = getattr(response, "choices", None) or []
-    if not choices:
-        return ""
-    message = getattr(choices[0], "message", None)
-    content = getattr(message, "content", None) if message is not None else None
-    return content if isinstance(content, str) else ""
-
-
-def _responses_text(response: Any) -> str:
-    chunks: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        for part in getattr(item, "content", None) or []:
-            text = getattr(part, "text", None)
-            if isinstance(text, str):
-                chunks.append(text)
-    return "".join(chunks)
+            return build_client(settings)
+        except LLMClientError as exc:
+            raise LLMPlannerError(str(exc)) from exc
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:

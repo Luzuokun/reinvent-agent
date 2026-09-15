@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-14**.
+Last updated: **2026-09-15**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,14 +35,13 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**Phase 3（本 PR 已完成）：** 在确定性 Critic 之上提供 **可选 LLM Critic**。
+**当前：多 provider LLM（openai / xai / gemini / openai_compatible）。** Phase 3 的可选 LLM Planner / Critic 仍在；客户端构造集中在 `agents/llm_client.py`，不再写死 OpenAI。
 
-- 默认仍是 `CriticAgent`（无网络）。
-- `--critic llm` / `config/agent.yaml` `critic.mode: llm` 才走模型。
-- LLM 只看结构化 evidence JSON；不调用 tools、不跑 shell、不改文件、不编造 docking / MD / 文献结论。
-- 输出形状不变：`PASS | WARNING | FAIL` + `issues[]` + `recommendation`，HTML / exit code 继续可用。
-- 非法 JSON、缺 key、缺 provider：大声 `WARNING` + 回退确定性 Critic（可配置 hard-fail）。
-- **Execution / Tools 不改**；安全约束不变。
+- `config/agent.yaml`：`planner.provider` / `critic.provider`；`model` / `base_url` / `api_key_env` 为 `null` 时用 provider 预设。
+- CLI：`--provider xai` 同时覆盖正在使用的 LLM planner/critic。
+- 密钥只从环境变量读（`OPENAI_API_KEY` / `XAI_API_KEY` 或 `GROK_API_KEY` / `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`）。仓库内不放 key。
+- 缺 key / provider 错误：行为与现在相同（默认 fallback + 大声 WARNING）。
+- 安全不变量不变。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -73,16 +72,23 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `docs/phase2-llm-planner.md`；测试全部 mock，CI 不访问网络
 - `run_reinvent` **没有** 模型可控参数；启动仍要人批
 
-### Phase 3 — 可选 LLM Critic（本 PR）
+### Phase 3 — 可选 LLM Critic（PR #2, 已合入 main）
 
 - `agents/critic_schema.py` + `agents/llm_critic.py`
 - `--critic {deterministic,llm}`；`docs/phase3-llm-critic.md`
 - evidence-only；docking/MD/文献等无证据声称会被 schema 拒绝并 fallback
 - 确定性 `CriticAgent.review` 算法未改
 
+### 多 provider LLM（openai / xai / gemini / openai_compatible）
+
+- `agents/llm_client.py`：Planner 与 Critic 共用的 OpenAI-compatible 客户端
+- 预设：`openai`（`OPENAI_API_KEY`）、`xai`（`https://api.x.ai/v1` + `XAI_API_KEY`）、`gemini`（Google OpenAI-compat URL + `GEMINI_API_KEY`）、`openai_compatible`（yaml 全指定）
+- `--provider`；yaml `provider` / `model` / `base_url` / `api_key_env`
+- 测试全部 mock，CI 不访问网络
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、executor 安全
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全
 - `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
 
 ---
@@ -93,7 +99,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
    模型仍可能把计数讲成“发现了药”。Planner/Critic 用 schema + fallback 压风险，但不能替代人读报告。
 2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。
 3. **Dry-run 分析陈旧 CSV** 容易让人以为刚生成了一批分子。v0.2 已标注；仍需在 UI/文档里盯着。
-4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。
+4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。可用 xAI / Gemini / 任意 OpenAI-compatible 端点，不必绑死 OpenAI 配额。
 5. **GPU 作业需要人批准**。本 MVP 的 demo 是 CPU sampling；真 GPU 工作流不自动开跑。
 6. **两套 REINVENT4 树**（本机环境，不在本 git 里）：可编辑的 kinase 安装 vs Documents 下的 clone。Agent 只调用 PATH 上的 `reinvent` 可执行文件 + 项目内 `reinvent.toml`。不要假设某棵源码树被 import。
 
@@ -111,12 +117,13 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Planner / Executor / Critic 分离 | 计划、执行、评价三条边界；Phase 3 只加 Critic 的 LLM 层 |
 | Narrow MVP | 暂无 PubMed / docking / MD |
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
+| Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3 与多 provider LLM 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. MCP tool packaging（把现有 tools 暴露给外部客户端，仍 allowlist）
 2. 更丰富的分析（描述符、简单过滤）——仍基于已有 CSV
@@ -133,6 +140,7 @@ Phase 3 已落地。之后 **按模块** 考虑，而不是重写成 10 个互�
 main.py                    CLI：Planning → Execution → Tools → Critic
 agents/planner.py          确定性 Planner（默认）
 agents/llm_planner.py      可选 LLM Planner
+agents/llm_client.py       多 provider OpenAI-compatible 客户端
 agents/plan_schema.py      plan allowlist
 agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
@@ -154,8 +162,9 @@ reports/report_*.html
 conda activate reinvent4    # REINVENT 4.8.x + RDKit；否则 reinvent 不在 PATH
 cd /path/to/reinvent-agent
 pip install -r requirements.txt
-# 可选 LLM：
+# 可选 LLM（同一 openai SDK；密钥只来自环境变量 / gitignored .env）
 pip install 'openai>=1.40'   # 或 pip install '.[llm]'
+export OPENAI_API_KEY=...    # 或 XAI_API_KEY / GEMINI_API_KEY
 ```
 
 Prior（真实 sampling 需要，gitignored）：
@@ -182,9 +191,15 @@ python main.py --project projects/demo_project --goal "Offline" \
 python main.py --project projects/demo_project --goal "Offline" \
   --planner llm --critic llm --skip-reinvent \
   --csv projects/demo_project/output/sampled-sample.csv
+
+# xAI（无需 OpenAI 配额）
+export XAI_API_KEY=...
+python main.py --project projects/demo_project --goal "Offline" \
+  --planner llm --critic llm --provider xai --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
 ```
 
-关键 flag：`--project` `--goal` `--approve-run` `--yes` `--skip-reinvent` `--csv` `--seed` `--config` `--planner {deterministic,llm}` `--critic {deterministic,llm}`
+关键 flag：`--project` `--goal` `--approve-run` `--yes` `--skip-reinvent` `--csv` `--seed` `--config` `--planner {deterministic,llm}` `--critic {deterministic,llm}` `--provider {openai,xai,gemini,openai_compatible}`
 
 Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback 关闭）→ 2。
 
