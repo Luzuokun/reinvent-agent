@@ -3,12 +3,16 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.3 scope:** same Phase 1 pipeline as v0.2, plus an **optional** LLM planner
-(`--planner llm`). Deterministic planning is still the default. See
-[docs/phase2-llm-planner.md](docs/phase2-llm-planner.md).
+**v0.4 scope:** same Phase 1 pipeline as v0.2, plus an **optional** LLM planner
+(`--planner llm`) and an **optional** LLM critic (`--critic llm`). Deterministic
+planning and critic remain the default. See
+[docs/phase2-llm-planner.md](docs/phase2-llm-planner.md) and
+[docs/phase3-llm-critic.md](docs/phase3-llm-critic.md).
+Project intent and stage notes: [AI_CONTEXT.md](AI_CONTEXT.md).
 
-No LLM tool-calling. The model may only return a JSON plan of allowlisted step
-names. Agents never execute arbitrary shell; they only call predefined tools.
+No LLM tool-calling. The planner may only return a JSON plan of allowlisted step
+names. The critic may only return `PASS`/`WARNING`/`FAIL` JSON from structured
+evidence. Agents never execute arbitrary shell; they only call predefined tools.
 
 ## Requirements
 
@@ -24,7 +28,7 @@ them into the same `reinvent4` env if missing:
 ```bash
 conda activate reinvent4
 pip install -r requirements.txt
-# optional, only for --planner llm:
+# optional, only for --planner llm / --critic llm:
 pip install 'openai>=1.40'
 ```
 
@@ -77,8 +81,9 @@ python main.py \
   --approve-run
 ```
 
-Optional LLM planner (falls back to deterministic with a loud warning if the
-API key is missing, the provider errors, or the plan fails validation):
+Optional LLM planner and/or critic (each falls back to its deterministic
+implementation with a loud warning if the API key is missing, the provider
+errors, or the JSON fails validation):
 
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -86,6 +91,7 @@ python main.py \
   --project projects/demo_project \
   --goal "Analyze existing sample molecules." \
   --planner llm \
+  --critic llm \
   --skip-reinvent \
   --csv projects/demo_project/output/sampled-sample.csv
 ```
@@ -177,6 +183,7 @@ Run from the repo root with `conda activate reinvent4`.
 5. Never delete files; never auto-install packages.
 6. REINVENT requires `--approve-run`, plus interactive confirm or `--yes`.
 7. Every action is logged under `logs/` (including per-run `result.json`).
+8. Optional LLM critic is evidence-only: no tools, no shell, no invented docking/MD/literature.
 
 ## Relation to other projects
 
@@ -189,11 +196,12 @@ Run from the repo root with `conda activate reinvent4`.
 ## Layout
 
 ```text
-agents/          Planner (deterministic default), optional LLM planner, Executor, Critic
+agents/          Planner + Critic (deterministic default), optional LLM layers, Executor
 tools/           Validated environment / reinvent / files / analysis / artefacts
 analysis/        Molecule stats + HTML report
 projects/        Sandboxed REINVENT projects (demo_project)
-docs/            Phase design notes (phase2-llm-planner.md)
+docs/            Phase design notes (phase2-llm-planner.md, phase3-llm-critic.md)
+AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml
 main.py

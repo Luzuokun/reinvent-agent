@@ -21,7 +21,7 @@ Planner  ── deterministic (default) ──► Plan dict
 Executor  (predefined tools only; never shell=True)
     │
     ▼
-Critic    (structured evidence only; still deterministic)
+Critic    (structured evidence only; deterministic default — Phase 3 adds optional LLM)
 ```
 
 The LLM is a **planner only**. It does not call tools, does not write TOML,
@@ -100,7 +100,8 @@ These invariants are unchanged and are enforced again on the LLM path:
    stricter: it must live under the project **output** directory.
 5. `--skip-reinvent` is owned by the CLI. If an LLM plan still lists
    `run_reinvent`, the validator strips it and the executor will not launch.
-6. No auto-install, no TOML rewriting, no PubMed / docking / MD, no LLM critic.
+6. No auto-install, no TOML rewriting, no PubMed / docking / MD.
+   Optional LLM critic is Phase 3 — see [phase3-llm-critic.md](phase3-llm-critic.md).
 
 On invalid LLM plan, missing API key, missing `openai` package, or provider
 error the agent **falls back to the deterministic plan** and prints a loud
@@ -197,5 +198,8 @@ socket. Deterministic planner steps stay the Phase 1 list.
 
 ## Out of scope (still)
 
-PubMed, docking, MD, LLM critic, auto-install, rewriting TOML, CrewAI /
+PubMed, docking, MD, auto-install, rewriting TOML, CrewAI /
 LangGraph / LlamaIndex / multi-agent chat frameworks.
+
+Phase 3 (optional LLM critic) is documented in
+[phase3-llm-critic.md](phase3-llm-critic.md).

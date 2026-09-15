@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agents.critic import CriticAgent
 from agents.executor import ExecutionAgent
+from agents.llm_critic import LLMCriticAgent, LLMCriticError
 from agents.llm_planner import LLMPlannerAgent, LLMPlannerError
 from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
@@ -99,6 +100,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Planner backend: deterministic (default) or llm. "
             "Overrides config planner.mode."
+        ),
+    )
+    parser.add_argument(
+        "--critic",
+        choices=("deterministic", "llm"),
+        default=None,
+        help=(
+            "Critic backend: deterministic (default) or llm. "
+            "Overrides config critic.mode."
         ),
     )
     return parser
@@ -232,11 +242,22 @@ def main(argv: list[str] | None = None) -> int:
             for err in analysis.get("errors") or []:
                 print(f"  ! {err}")
 
-    critic = CriticAgent(agent_config=agent_config)
-    verdict = critic.review(results)
+    try:
+        verdict = _review_with_critic(args, agent_config, results)
+    except LLMCriticError as exc:
+        print(f"\nERROR: {exc}")
+        logger.error("LLM critic failed without fallback: %s", exc)
+        return 2
+
     results["steps"]["critic_review"] = verdict
 
     print("\n[Critic Agent]")
+    critic_name = verdict.get("critic") or "deterministic"
+    print(f"Critic: {critic_name}")
+    if verdict.get("critic_fallback"):
+        print("WARNING: LLM critic failed — using deterministic critic (fallback).")
+        for warning in verdict.get("critic_warnings") or []:
+            print(f"WARNING: {warning}")
     print(f"Status: {verdict['status']}")
     for issue in verdict.get("issues") or []:
         print(f"  - {issue}")
@@ -304,6 +325,29 @@ def _create_plan(
         approve_run=approve_run,
         skip_reinvent=args.skip_reinvent,
     )
+
+
+def _review_with_critic(
+    args: argparse.Namespace,
+    agent_config: dict,
+    results: dict,
+) -> dict:
+    critic_cfg = agent_config.get("critic") or {}
+    mode = args.critic or critic_cfg.get("mode") or "deterministic"
+    mode = str(mode).strip().lower()
+    if mode not in ("deterministic", "llm"):
+        raise LLMCriticError(
+            f"Unknown critic mode {mode!r}; use deterministic or llm"
+        )
+
+    if mode == "llm":
+        critic: CriticAgent | LLMCriticAgent = LLMCriticAgent(
+            agent_config=agent_config
+        )
+    else:
+        critic = CriticAgent(agent_config=agent_config)
+
+    return critic.review(results)
 
 
 if __name__ == "__main__":

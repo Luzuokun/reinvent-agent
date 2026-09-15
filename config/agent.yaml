@@ -30,6 +30,16 @@ project:
   output_dirname: output
 
 critic:
+  # deterministic (default, no network) | llm (OpenAI-compatible, optional)
+  mode: deterministic
+  provider: openai
+  api: chat_completions
+  model: gpt-4o-mini
+  temperature: 0.0
+  api_key_env: OPENAI_API_KEY
+  base_url: null
+  # Invalid verdict / missing key / provider error → deterministic critic + loud warning
+  fallback_on_error: true
   # Fraction of valid molecules below this → WARNING (or FAIL if zero molecules)
   min_valid_fraction: 0.80
   # Duplicate SMILES fraction above this → WARNING
