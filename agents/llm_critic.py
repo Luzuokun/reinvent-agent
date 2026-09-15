@@ -5,6 +5,9 @@ critic verdict dict (PASS | WARNING | FAIL). Model text is parsed as JSON,
 then passed through ``validate_critic_verdict``. It is never interpolated
 into argv, a shell, or a filesystem write.
 
+Client construction is centralized in ``agents.llm_client`` (openai / xai /
+gemini / openai_compatible).
+
 The model sees a compact evidence summary only. It does not call tools,
 run REINVENT, or invent docking / MD / literature claims.
 
@@ -17,16 +20,21 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any, Callable
 
 from agents.critic import CriticAgent
 from agents.critic_schema import (
     LLM_CRITIC_JSON_SCHEMA,
-    CriticValidationError,
     build_evidence_summary,
     parse_json_object,
     validate_critic_verdict,
+)
+from agents.llm_client import (
+    LLMClientError,
+    LLMSettings,
+    build_client,
+    complete_structured,
+    resolve_llm_settings,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,18 +84,54 @@ class LLMCriticAgent:
         *,
         client: Any | None = None,
         complete_fn: CompleteFn | None = None,
+        provider_override: str | None = None,
     ) -> None:
         self.agent_config = agent_config or {}
         critic_cfg = self.agent_config.get("critic") or {}
         planner_cfg = self.agent_config.get("planner") or {}
-        self.provider = str(critic_cfg.get("provider") or planner_cfg.get("provider") or "openai")
-        self.api = str(critic_cfg.get("api") or planner_cfg.get("api") or "chat_completions").lower()
-        self.model = str(critic_cfg.get("model") or planner_cfg.get("model") or "gpt-4o-mini")
-        self.temperature = float(critic_cfg.get("temperature", planner_cfg.get("temperature", 0.0)))
-        self.api_key_env = str(
-            critic_cfg.get("api_key_env") or planner_cfg.get("api_key_env") or "OPENAI_API_KEY"
+        self._settings_error: BaseException | None = None
+        self.llm: LLMSettings | None
+        try:
+            self.llm = resolve_llm_settings(
+                critic_cfg,
+                fallback=planner_cfg,
+                provider_override=provider_override,
+            )
+        except LLMClientError as exc:
+            self.llm = None
+            self._settings_error = exc
+        self.provider = (
+            self.llm.provider if self.llm is not None else str(
+                critic_cfg.get("provider") or planner_cfg.get("provider") or "openai"
+            )
         )
-        self.base_url = critic_cfg.get("base_url") or planner_cfg.get("base_url") or None
+        self.api = (
+            self.llm.api if self.llm is not None else str(
+                critic_cfg.get("api") or planner_cfg.get("api") or "chat_completions"
+            ).lower()
+        )
+        self.model = (
+            self.llm.model if self.llm is not None else str(
+                critic_cfg.get("model") or planner_cfg.get("model") or "gpt-4o-mini"
+            )
+        )
+        self.temperature = (
+            self.llm.temperature
+            if self.llm is not None
+            else float(critic_cfg.get("temperature", planner_cfg.get("temperature", 0.0)))
+        )
+        self.api_key_env = (
+            self.llm.api_key_env
+            if self.llm is not None
+            else str(
+                critic_cfg.get("api_key_env") or planner_cfg.get("api_key_env") or "OPENAI_API_KEY"
+            )
+        )
+        self.base_url = (
+            self.llm.base_url
+            if self.llm is not None
+            else (critic_cfg.get("base_url") or planner_cfg.get("base_url") or None)
+        )
         self.fallback_on_error = bool(critic_cfg.get("fallback_on_error", True))
         self._deterministic = CriticAgent(agent_config=self.agent_config)
         self._client = client
@@ -151,104 +195,31 @@ class LLMCriticAgent:
     def _complete(self, messages: list[dict[str, str]]) -> str:
         if self._complete_fn is not None:
             return self._complete_fn(messages)
+        settings = self._require_settings()
         client = self._ensure_client()
-        if self.api in ("responses", "response"):
-            return self._complete_responses(client, messages)
-        return self._complete_chat(client, messages)
+        try:
+            return complete_structured(
+                client,
+                settings,
+                messages,
+                schema_name="reinvent_agent_critic",
+                json_schema=LLM_CRITIC_JSON_SCHEMA,
+            )
+        except LLMClientError as exc:
+            raise LLMCriticError(str(exc)) from exc
+
+    def _require_settings(self) -> LLMSettings:
+        if self._settings_error is not None:
+            raise LLMCriticError(str(self._settings_error)) from self._settings_error
+        if self.llm is None:
+            raise LLMCriticError("LLM critic settings are not resolved")
+        return self.llm
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
             return self._client
-        api_key = os.environ.get(self.api_key_env)
-        if not api_key:
-            raise LLMCriticError(
-                f"Missing API key: set environment variable {self.api_key_env}"
-            )
+        settings = self._require_settings()
         try:
-            from openai import OpenAI
-        except ImportError as exc:  # pragma: no cover - optional extra
-            raise LLMCriticError(
-                "The openai package is not installed. "
-                "Install it with: pip install 'openai>=1.40'"
-            ) from exc
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if self.base_url:
-            kwargs["base_url"] = str(self.base_url)
-        return OpenAI(**kwargs)
-
-    def _complete_chat(self, client: Any, messages: list[dict[str, str]]) -> str:
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "temperature": self.temperature,
-            "messages": messages,
-            "max_tokens": 1024,
-        }
-        schema_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "reinvent_agent_critic",
-                "strict": True,
-                "schema": LLM_CRITIC_JSON_SCHEMA,
-            },
-        }
-        try:
-            response = client.chat.completions.create(
-                **kwargs, response_format=schema_format
-            )
-        except Exception as exc:  # noqa: BLE001
-            hint = str(exc).lower()
-            if any(token in hint for token in ("response_format", "json_schema", "structured")):
-                logger.warning("Structured json_schema not accepted; retrying as json_object.")
-                response = client.chat.completions.create(
-                    **kwargs, response_format={"type": "json_object"}
-                )
-            else:
-                raise
-        content = _chat_content(response)
-        if not content:
-            raise LLMCriticError("Empty Chat Completions response")
-        return content
-
-    def _complete_responses(self, client: Any, messages: list[dict[str, str]]) -> str:
-        input_items = [
-            {"role": m["role"], "content": m["content"]} for m in messages
-        ]
-        kwargs: dict[str, Any] = {
-            "model": self.model,
-            "temperature": self.temperature,
-            "input": input_items,
-            "text": {
-                "format": {
-                    "type": "json_schema",
-                    "name": "reinvent_agent_critic",
-                    "strict": True,
-                    "schema": LLM_CRITIC_JSON_SCHEMA,
-                }
-            },
-        }
-        response = client.responses.create(**kwargs)
-        text = getattr(response, "output_text", None)
-        if not text:
-            text = _responses_text(response)
-        if not text:
-            raise LLMCriticError("Empty Responses API output")
-        return text
-
-
-def _chat_content(response: Any) -> str:
-    choices = getattr(response, "choices", None) or []
-    if not choices:
-        return ""
-    message = getattr(choices[0], "message", None)
-    content = getattr(message, "content", None) if message is not None else None
-    return content if isinstance(content, str) else ""
-
-
-def _responses_text(response: Any) -> str:
-    chunks: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        for part in getattr(item, "content", None) or []:
-            text = getattr(part, "text", None)
-            if isinstance(text, str):
-                chunks.append(text)
-    return "".join(chunks)
+            return build_client(settings)
+        except LLMClientError as exc:
+            raise LLMCriticError(str(exc)) from exc

@@ -119,6 +119,31 @@ def test_llm_critic_mocked_responses_client():
     assert verdict["status"] == "FAIL"
 
 
+def test_llm_critic_gemini_mocked_client_uses_preset_model():
+    captured: dict = {}
+    content = json.dumps(
+        {
+            "status": "PASS",
+            "issues": [],
+            "recommendation": "Offline analysis evidence is consistent.",
+        }
+    )
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+    )
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return response
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    verdict = _agent(client=client, provider="gemini").review(PASSING_RESULTS)
+    assert verdict["critic"] == "llm"
+    assert captured["model"] == "gemini-2.5-flash"
+
+
 def test_llm_critic_messages_are_evidence_only():
     captured: list[list[dict[str, str]]] = []
 
@@ -199,8 +224,19 @@ def test_llm_critic_invented_md_claim_falls_back():
     assert any("invented" in w or "GROMACS" in w or "out-of-scope" in w for w in verdict["critic_warnings"])
 
 
+def _clear_llm_keys(monkeypatch):
+    for name in (
+        "OPENAI_API_KEY",
+        "XAI_API_KEY",
+        "GROK_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_llm_critic_missing_api_key_falls_back(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _clear_llm_keys(monkeypatch)
     verdict = _agent().review(PASSING_RESULTS)
     assert verdict["critic_fallback"] is True
     assert any("API key" in w or "Missing" in w for w in verdict["critic_warnings"])
@@ -252,8 +288,8 @@ def test_review_with_critic_default_is_deterministic():
 
 
 def test_review_with_critic_llm_falls_back_without_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    args = Namespace(critic="llm")
+    _clear_llm_keys(monkeypatch)
+    args = Namespace(critic="llm", provider=None)
     verdict = _review_with_critic(
         args,
         {"critic": {"mode": "deterministic", "fallback_on_error": True}},
@@ -261,3 +297,22 @@ def test_review_with_critic_llm_falls_back_without_key(monkeypatch):
     )
     assert verdict["critic_fallback"] is True
     assert verdict["status"] == CriticAgent().review(PASSING_RESULTS)["status"]
+
+
+def test_llm_critic_xai_missing_key_mentions_xai_env(monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    verdict = _agent(provider="xai").review(PASSING_RESULTS)
+    assert verdict["critic_fallback"] is True
+    assert any("XAI_API_KEY" in w for w in verdict["critic_warnings"])
+
+
+def test_review_with_critic_provider_flag_uses_xai_env(monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    args = Namespace(critic="llm", provider="xai")
+    verdict = _review_with_critic(
+        args,
+        {"critic": {"mode": "deterministic", "fallback_on_error": True}},
+        PASSING_RESULTS,
+    )
+    assert verdict["critic_fallback"] is True
+    assert any("XAI_API_KEY" in w for w in verdict["critic_warnings"])

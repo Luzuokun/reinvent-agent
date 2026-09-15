@@ -32,7 +32,8 @@ and does not talk to other agents. Its output is JSON that must pass
 |-----------|-----------------|
 | `agents/planner.py` | Unchanged algorithm; still the default |
 | `agents/plan_schema.py` | Allowlist + strict validator |
-| `agents/llm_planner.py` | OpenAI-compatible Chat Completions or Responses API |
+| `agents/llm_planner.py` | LLM planner; client via `agents/llm_client.py` |
+| `agents/llm_client.py` | Shared OpenAI-compatible client (openai / xai / gemini / openai_compatible) |
 | `agents/executor.py` | Same tools; optional validated `csv_path`; ignores `run_reinvent` when `--skip-reinvent` |
 | `agents/critic.py` | Unchanged |
 
@@ -115,13 +116,13 @@ error the agent **falls back to the deterministic plan** and prints a loud
 ```yaml
 planner:
   mode: deterministic          # or llm
-  provider: openai
+  provider: openai             # openai | xai | gemini | openai_compatible
   api: chat_completions        # or responses
-  model: gpt-4o-mini
+  model: null                  # null → provider default
   temperature: 0.0
   max_steps: 8
-  api_key_env: OPENAI_API_KEY
-  base_url: null               # optional OpenAI-compatible endpoint
+  api_key_env: null            # null → OPENAI_API_KEY / XAI_API_KEY / GEMINI_API_KEY
+  base_url: null               # null → provider default endpoint
   fallback_on_error: true
   allowlist:                   # must be a subset of the hardcoded list
     - check_environment
@@ -135,7 +136,11 @@ planner:
 ```
 
 `--planner {deterministic,llm}` overrides `planner.mode`. Both default to
-`deterministic`.
+`deterministic`. `--provider {openai,xai,gemini,openai_compatible}` overrides
+`planner.provider` and `critic.provider` for whichever LLM path is active.
+
+Keys are environment variables only (never files in the repo). `.env` is
+gitignored. See README for xAI / Gemini export examples.
 
 ## How to run
 
@@ -145,7 +150,7 @@ Install the optional SDK only if you want the LLM planner (CI does not need it):
 conda activate reinvent4
 pip install -r requirements.txt
 pip install 'openai>=1.40'    # or: pip install '.[llm]'
-export OPENAI_API_KEY=sk-...
+export OPENAI_API_KEY=sk-...  # or XAI_API_KEY / GEMINI_API_KEY
 ```
 
 Deterministic (Phase 1, unchanged):
@@ -172,10 +177,27 @@ OpenAI-compatible local server:
 ```yaml
 planner:
   mode: llm
+  provider: openai_compatible
   api: chat_completions
   model: local-model
   base_url: http://127.0.0.1:8000/v1
-  api_key_env: OPENAI_API_KEY
+  api_key_env: LOCAL_API_KEY
+```
+
+xAI:
+
+```yaml
+planner:
+  mode: llm
+  provider: xai
+  # model/base_url/api_key_env omitted → grok-4, https://api.x.ai/v1, XAI_API_KEY
+```
+
+```bash
+export XAI_API_KEY=...
+python main.py --project projects/demo_project --goal "Offline" \
+  --planner llm --provider xai --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
 ```
 
 Responses API (official OpenAI models that support it):

@@ -28,7 +28,7 @@ them into the same `reinvent4` env if missing:
 ```bash
 conda activate reinvent4
 pip install -r requirements.txt
-# optional, only for --planner llm / --critic llm:
+# optional, only for --planner llm / --critic llm (same SDK for xAI / Gemini):
 pip install 'openai>=1.40'
 ```
 
@@ -83,7 +83,8 @@ python main.py \
 
 Optional LLM planner and/or critic (each falls back to its deterministic
 implementation with a loud warning if the API key is missing, the provider
-errors, or the JSON fails validation):
+errors, or the JSON fails validation). Keys come from the environment only
+(never from files in the repo). `.env` is gitignored if you use one.
 
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -94,6 +95,57 @@ python main.py \
   --critic llm \
   --skip-reinvent \
   --csv projects/demo_project/output/sampled-sample.csv
+```
+
+### LLM providers
+
+`config/agent.yaml` `planner.provider` / `critic.provider`, or `--provider`.
+The same OpenAI Python SDK is used for every vendor (`pip install 'openai>=1.40'`).
+
+| provider | default `base_url` | API key env (aliases) | default model |
+|----------|--------------------|------------------------|---------------|
+| `openai` | SDK default (`api.openai.com`) | `OPENAI_API_KEY` | `gpt-4o-mini` |
+| `xai` | `https://api.x.ai/v1` | `XAI_API_KEY` (`GROK_API_KEY`) | `grok-4` |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GEMINI_API_KEY` (`GOOGLE_API_KEY`) | `gemini-2.5-flash` |
+| `openai_compatible` | required in yaml | required `api_key_env` | required `model` |
+
+Leave `model` / `base_url` / `api_key_env` as `null` in yaml to use the
+provider preset. Override them when you need a specific model (e.g. `grok-4.6`
+or `gemini-3.8-flash`).
+
+xAI (no OpenAI quota):
+
+```bash
+export XAI_API_KEY=...          # or GROK_API_KEY
+python main.py \
+  --project projects/demo_project \
+  --goal "Analyze existing sample molecules." \
+  --planner llm --critic llm --provider xai \
+  --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
+```
+
+Gemini (OpenAI-compatible endpoint):
+
+```bash
+export GEMINI_API_KEY=...       # or GOOGLE_API_KEY
+python main.py \
+  --project projects/demo_project \
+  --goal "Analyze existing sample molecules." \
+  --planner llm --critic llm --provider gemini \
+  --skip-reinvent \
+  --csv projects/demo_project/output/sampled-sample.csv
+```
+
+Generic OpenAI-compatible server:
+
+```yaml
+planner:
+  mode: llm
+  provider: openai_compatible
+  model: local-model
+  base_url: http://127.0.0.1:8000/v1
+  api_key_env: LOCAL_API_KEY
 ```
 
 Non-interactive approved run (scripts / CI):
@@ -196,7 +248,7 @@ Run from the repo root with `conda activate reinvent4`.
 ## Layout
 
 ```text
-agents/          Planner + Critic (deterministic default), optional LLM layers, Executor
+agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
 tools/           Validated environment / reinvent / files / analysis / artefacts
 analysis/        Molecule stats + HTML report
 projects/        Sandboxed REINVENT projects (demo_project)

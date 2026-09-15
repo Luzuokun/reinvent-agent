@@ -96,6 +96,30 @@ def test_llm_planner_mocked_responses_client():
     assert plan["steps"] == SKIP_STEPS
 
 
+def test_llm_planner_xai_mocked_client_uses_preset_model():
+    captured: dict = {}
+    content = json.dumps({"steps": SKIP_STEPS, "notes": [], "csv_path": None})
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+    )
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return response
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    plan = _agent(client=client, provider="xai").create_plan(
+        "Analyze existing molecules",
+        project_dir=str(DEMO),
+        approve_run=False,
+        skip_reinvent=True,
+    )
+    assert plan["planner"] == "llm"
+    assert captured["model"] == "grok-4"
+
+
 def test_llm_planner_invalid_plan_falls_back(caplog):
     def complete(_messages):
         return json.dumps({"steps": ["hack_the_planet"], "notes": [], "csv_path": None})
@@ -114,8 +138,19 @@ def test_llm_planner_invalid_plan_falls_back(caplog):
     assert plan["planner_warnings"]
 
 
+def _clear_llm_keys(monkeypatch):
+    for name in (
+        "OPENAI_API_KEY",
+        "XAI_API_KEY",
+        "GROK_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_llm_planner_missing_api_key_falls_back(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _clear_llm_keys(monkeypatch)
     plan = _agent().create_plan(
         "goal",
         project_dir=str(DEMO),
@@ -163,3 +198,28 @@ def test_cli_planner_flag_defaults_and_choices():
     assert parser.parse_args(["--planner", "llm"]).planner == "llm"
     with pytest.raises(SystemExit):
         parser.parse_args(["--planner", "crewai"])
+
+
+def test_llm_planner_xai_missing_key_mentions_xai_env(monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    plan = _agent(provider="xai").create_plan(
+        "goal",
+        project_dir=str(DEMO),
+        approve_run=False,
+        skip_reinvent=True,
+    )
+    assert plan["planner_fallback"] is True
+    assert any("XAI_API_KEY" in w for w in plan["planner_warnings"])
+    assert plan["steps"] == SKIP_STEPS
+
+
+def test_llm_planner_gemini_missing_key_mentions_gemini_env(monkeypatch):
+    _clear_llm_keys(monkeypatch)
+    plan = _agent(provider="gemini").create_plan(
+        "goal",
+        project_dir=str(DEMO),
+        approve_run=False,
+        skip_reinvent=True,
+    )
+    assert plan["planner_fallback"] is True
+    assert any("GEMINI_API_KEY" in w for w in plan["planner_warnings"])
