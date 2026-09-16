@@ -126,8 +126,8 @@ def _svg_histogram(
             f"</figure>"
         )
 
-    width, height = 640, 240
-    pad_l, pad_r, pad_t, pad_b = 48, 16, 28, 44
+    width, height = 640, 252
+    pad_l, pad_r, pad_t, pad_b = 48, 16, 28, 52
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
     max_count = max(int(c) for c in counts) if counts else 1
@@ -457,12 +457,14 @@ def _render_html(payload: dict[str, Any]) -> str:
     }}
     .chart {{
       margin: 0;
-      overflow-x: auto;
+      overflow: hidden;
     }}
     .chart svg {{
       width: 100%;
+      max-width: 100%;
       height: auto;
       display: block;
+      box-sizing: border-box;
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 8px;
