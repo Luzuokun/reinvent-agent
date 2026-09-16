@@ -170,6 +170,9 @@ def build_evidence_summary(
                 "mw": _stat_block(rdkit.get("mw")),
                 "logp": _stat_block(rdkit.get("logp")),
                 "qed": _stat_block(rdkit.get("qed")),
+                "sa_score": _stat_block(rdkit.get("sa_score")),
+                "pains": _pains_block(rdkit.get("pains")),
+                "filters": _filters_block(rdkit.get("filters")),
             },
         },
         "thresholds": dict(thresholds or {}),
@@ -312,4 +315,26 @@ def _stat_block(value: Any) -> dict[str, Any] | None:
         "mean": value.get("mean"),
         "stdev": value.get("stdev"),
         "n": value.get("n"),
+    }
+
+
+def _pains_block(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "available": value.get("available"),
+        "molecules_with_hits": value.get("molecules_with_hits"),
+        "total_hits": value.get("total_hits"),
+        "hit_fraction": value.get("hit_fraction"),
+    }
+
+
+def _filters_block(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "qed_pass_threshold": value.get("qed_pass_threshold"),
+        "qed_pass_count": value.get("qed_pass_count"),
+        "pains_free_count": value.get("pains_free_count"),
+        "qed_pass_and_pains_free_count": value.get("qed_pass_and_pains_free_count"),
     }

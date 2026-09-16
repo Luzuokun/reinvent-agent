@@ -37,6 +37,17 @@ def test_analyze_sample_csv():
     assert result["ok"] is True
     assert result["total_molecules"] > 0
     assert result["smiles_column"] == "SMILES"
+    rdkit = result["rdkit"]
+    assert "sa_score" in rdkit
+    assert "pains" in rdkit
+    assert "filters" in rdkit
+    assert "histograms" in rdkit
+    if rdkit.get("available"):
+        assert rdkit["sa_score"]["mean"] is not None or rdkit["sa_score"]["available"] is False
+        assert rdkit["pains"]["molecules_with_hits"] is not None or rdkit["pains"]["available"] is False
+    else:
+        assert rdkit["sa_score"]["mean"] is None
+        assert rdkit["pains"]["molecules_with_hits"] is None
 
 
 def test_planner_and_critic_dry_run():

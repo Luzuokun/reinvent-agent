@@ -252,6 +252,17 @@ def main(argv: list[str] | None = None) -> int:
                 qed = (rdkit.get("qed") or {}).get("mean")
                 if qed is not None:
                     print(f"Mean QED: {qed}")
+                sa = (rdkit.get("sa_score") or {}).get("mean")
+                if sa is not None:
+                    print(f"Mean SA:  {sa}")
+                pains = rdkit.get("pains") or {}
+                if pains.get("available") and pains.get("molecules_with_hits") is not None:
+                    print(f"PAINS:    {pains.get('molecules_with_hits')} molecules")
+                filters = rdkit.get("filters") or {}
+                qed_pass = filters.get("qed_pass_count")
+                if qed_pass is not None:
+                    thr = filters.get("qed_pass_threshold")
+                    print(f"QED≥{thr}:  {qed_pass}")
         else:
             print("Analysis failed:")
             for err in analysis.get("errors") or []:

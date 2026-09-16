@@ -3,9 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.4 scope:** same Phase 1 pipeline as v0.2, plus an **optional** LLM planner
-(`--planner llm`) and an **optional** LLM critic (`--critic llm`). Deterministic
-planning and critic remain the default. See
+**v0.5 scope:** same pipeline as v0.4, plus SA Score / PAINS / simple QED
+filters on existing CSV analysis, and **embedded SVG histograms** (QED, MW,
+logP) in the HTML report. Optional critic threshold `min_mean_qed` does not
+invent a QED mean when it is missing. Deterministic planning and critic remain
+the default. See
+[docs/csv-analysis-report.md](docs/csv-analysis-report.md),
 [docs/phase2-llm-planner.md](docs/phase2-llm-planner.md) and
 [docs/phase3-llm-critic.md](docs/phase3-llm-critic.md).
 Project intent and stage notes: [AI_CONTEXT.md](AI_CONTEXT.md).
@@ -217,6 +220,8 @@ Run from the repo root with `conda activate reinvent4`.
      --skip-reinvent --csv projects/demo_project/output/sampled-sample.csv
    ```
    Expect: Critic `PASS` (or `WARNING` only if RDKit missing); exit `0`.
+   HTML report includes QED / MW / logP SVG histograms and a PAINS count
+   when RDKit is available.
 
 5. **Full approved sampling**
    ```bash
@@ -252,7 +257,7 @@ agents/          Planner + Critic (deterministic default), optional LLM layers, 
 tools/           Validated environment / reinvent / files / analysis / artefacts
 analysis/        Molecule stats + HTML report
 projects/        Sandboxed REINVENT projects (demo_project)
-docs/            Phase design notes (phase2-llm-planner.md, phase3-llm-critic.md)
+docs/            Phase design notes (csv-analysis-report.md, phase2-llm-planner.md, phase3-llm-critic.md)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

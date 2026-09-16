@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 SMILES_CANDIDATES = ("SMILES", "smiles", "Smiles", "canonical_smiles", "CANONICAL_SMILES")
+DEFAULT_QED_PASS_THRESHOLD = 0.5
+HISTOGRAM_BINS = 10
 
 
 def _detect_smiles_column(columns: list[str]) -> str | None:
@@ -38,15 +40,155 @@ def _stdev(values: list[float]) -> float | None:
     return math.sqrt(var)
 
 
-def analyze_molecules(csv_path: str | Path, *, max_rows: int | None = None) -> dict[str, Any]:
+def _round(value: float | None, ndigits: int = 4) -> float | None:
+    if value is None:
+        return None
+    return round(value, ndigits)
+
+
+def _stat_dict(values: list[float]) -> dict[str, Any]:
+    return {
+        "mean": _round(_mean(values)),
+        "stdev": _round(_stdev(values)),
+        "n": len(values),
+        "min": _round(min(values)) if values else None,
+        "max": _round(max(values)) if values else None,
+    }
+
+
+def _histogram(
+    values: list[float],
+    *,
+    n_bins: int = HISTOGRAM_BINS,
+    range_min: float | None = None,
+    range_max: float | None = None,
+) -> dict[str, Any]:
+    """Equal-width histogram. Empty input yields empty bins (no invented counts)."""
+    if not values:
+        return {"bin_edges": [], "counts": [], "n": 0, "min": None, "max": None}
+
+    vmin = min(values) if range_min is None else range_min
+    vmax = max(values) if range_max is None else range_max
+    data_min = min(values)
+    data_max = max(values)
+    n = len(values)
+    if vmax < vmin:
+        vmin, vmax = vmax, vmin
+    if vmin == vmax:
+        return {
+            "bin_edges": [_round(vmin), _round(vmax)],
+            "counts": [n],
+            "n": n,
+            "min": _round(data_min),
+            "max": _round(data_max),
+        }
+
+    n_bins = max(1, int(n_bins))
+    width = (vmax - vmin) / n_bins
+    edges = [vmin + i * width for i in range(n_bins + 1)]
+    edges[-1] = vmax
+    counts = [0] * n_bins
+    for x in values:
+        if x >= vmax:
+            idx = n_bins - 1
+        elif x <= vmin:
+            idx = 0
+        else:
+            idx = int((x - vmin) / width)
+            idx = min(max(idx, 0), n_bins - 1)
+        counts[idx] += 1
+    return {
+        "bin_edges": [_round(e) for e in edges],
+        "counts": counts,
+        "n": n,
+        "min": _round(data_min),
+        "max": _round(data_max),
+    }
+
+
+def _load_sa_scorer() -> tuple[Callable[[Any], float] | None, str | None]:
+    try:
+        from rdkit.Contrib.SA_Score import sascorer
+
+        fn = sascorer.calculateScore
+        if not callable(fn):
+            return None, "SA Score calculateScore is not callable"
+        return fn, None
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+
+
+def _load_pains_catalog() -> tuple[Any | None, str | None]:
+    try:
+        from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
+
+        params = FilterCatalogParams()
+        params.AddCatalog(FilterCatalogParams.FilterCatalogs.PAINS)
+        return FilterCatalog(params), None
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+
+
+def _import_rdkit_modules() -> tuple[Any, Any, Any]:
+    from rdkit import Chem
+    from rdkit.Chem import Descriptors, QED
+
+    return Chem, Descriptors, QED
+
+
+def _empty_rdkit_block(
+    *,
+    rdkit_error: str | None,
+    qed_pass_threshold: float,
+) -> dict[str, Any]:
+    empty_stats = {"mean": None, "stdev": None, "n": 0, "min": None, "max": None}
+    empty_hist = {"bin_edges": [], "counts": [], "n": 0, "min": None, "max": None}
+    return {
+        "available": False,
+        "error": rdkit_error,
+        "valid_molecules": None,
+        "invalid_molecules": None,
+        "valid_fraction": None,
+        "mw": dict(empty_stats),
+        "logp": dict(empty_stats),
+        "qed": dict(empty_stats),
+        "sa_score": {**empty_stats, "available": False},
+        "pains": {
+            "available": False,
+            "molecules_with_hits": None,
+            "total_hits": None,
+            "hit_fraction": None,
+        },
+        "filters": {
+            "qed_pass_threshold": qed_pass_threshold,
+            "qed_pass_count": None,
+            "pains_free_count": None,
+            "qed_pass_and_pains_free_count": None,
+        },
+        "histograms": {
+            "qed": dict(empty_hist),
+            "mw": dict(empty_hist),
+            "logp": dict(empty_hist),
+        },
+    }
+
+
+def analyze_molecules(
+    csv_path: str | Path,
+    *,
+    max_rows: int | None = None,
+    qed_pass_threshold: float = DEFAULT_QED_PASS_THRESHOLD,
+) -> dict[str, Any]:
     """Analyze a REINVENT (or similar) molecule CSV.
 
     If RDKit is unavailable, returns counts/duplicates and a warning without
-    crashing the caller.
+    crashing the caller. SA Score / PAINS / histograms are omitted (nulls),
+    never fabricated.
     """
     csv_path = Path(csv_path).expanduser().resolve()
     warnings: list[str] = []
     errors: list[str] = []
+    qed_pass_threshold = float(qed_pass_threshold)
 
     if not csv_path.is_file():
         return {
@@ -107,32 +249,138 @@ def analyze_molecules(csv_path: str | Path, *, max_rows: int | None = None) -> d
     mw_vals: list[float] = []
     logp_vals: list[float] = []
     qed_vals: list[float] = []
+    sa_vals: list[float] = []
+    sa_available = False
+    pains_available = False
+    pains_mols = 0
+    pains_hits = 0
+    qed_pass = 0
+    pains_free = 0
+    qed_and_pains_free = 0
+    scored_for_filters = 0
 
     try:
-        from rdkit import Chem
-        from rdkit.Chem import Descriptors, QED
+        Chem, Descriptors, QED = _import_rdkit_modules()
 
         rdkit_available = True
+        sa_fn, sa_error = _load_sa_scorer()
+        if sa_fn is None:
+            warnings.append(
+                "SA Score unavailable; mean SA skipped. "
+                f"Detail: {sa_error}"
+            )
+        else:
+            sa_available = True
+
+        pains_catalog, pains_error = _load_pains_catalog()
+        if pains_catalog is None:
+            warnings.append(
+                "PAINS catalog unavailable; PAINS counts skipped. "
+                f"Detail: {pains_error}"
+            )
+        else:
+            pains_available = True
+
+        sa_failed = False
+        pains_failed = False
+        descriptor_failed = False
         for smi in smiles_list:
             mol = Chem.MolFromSmiles(smi)
             if mol is None:
                 invalid += 1
                 continue
             valid += 1
+            qed: float | None = None
             try:
                 mw_vals.append(float(Descriptors.MolWt(mol)))
                 logp_vals.append(float(Descriptors.MolLogP(mol)))
-                qed_vals.append(float(QED.qed(mol)))
+                qed = float(QED.qed(mol))
+                qed_vals.append(qed)
             except Exception:  # noqa: BLE001
-                warnings.append("Descriptor calculation failed for at least one molecule")
+                descriptor_failed = True
+
+            if sa_fn is not None:
+                try:
+                    sa_vals.append(float(sa_fn(mol)))
+                except Exception:  # noqa: BLE001
+                    sa_failed = True
+
+            pains_hit: bool | None = None
+            if pains_catalog is not None:
+                try:
+                    n_hits = len(pains_catalog.GetMatches(mol))
+                    pains_hit = n_hits > 0
+                    if n_hits:
+                        pains_mols += 1
+                        pains_hits += n_hits
+                except Exception:  # noqa: BLE001
+                    pains_failed = True
+
+            if qed is not None:
+                scored_for_filters += 1
+                passes_qed = qed >= qed_pass_threshold
+                if passes_qed:
+                    qed_pass += 1
+                if pains_hit is False:
+                    pains_free += 1
+                    if passes_qed:
+                        qed_and_pains_free += 1
+
+        if descriptor_failed:
+            warnings.append("Descriptor calculation failed for at least one molecule")
+        if sa_failed:
+            warnings.append("SA Score calculation failed for at least one molecule")
+        if pains_failed:
+            warnings.append("PAINS matching failed for at least one molecule")
     except Exception as exc:  # noqa: BLE001
         rdkit_error = str(exc)
         warnings.append(
-            "RDKit unavailable; validity/MW/logP/QED skipped. "
+            "RDKit unavailable; validity/MW/logP/QED/SA/PAINS skipped. "
             f"Detail: {rdkit_error}"
         )
 
     valid_fraction = (valid / total) if total and rdkit_available else None
+    if rdkit_available:
+        sa_stats = _stat_dict(sa_vals)
+        sa_stats["available"] = sa_available
+        pains_block: dict[str, Any] = {
+            "available": pains_available,
+            "molecules_with_hits": pains_mols if pains_available else None,
+            "total_hits": pains_hits if pains_available else None,
+            "hit_fraction": (
+                _round(pains_mols / valid) if pains_available and valid else None
+            ),
+        }
+        filters_block = {
+            "qed_pass_threshold": qed_pass_threshold,
+            "qed_pass_count": qed_pass if scored_for_filters else None,
+            "pains_free_count": pains_free if pains_available else None,
+            "qed_pass_and_pains_free_count": (
+                qed_and_pains_free if pains_available and scored_for_filters else None
+            ),
+        }
+        rdkit_block: dict[str, Any] = {
+            "available": True,
+            "error": rdkit_error,
+            "valid_molecules": valid,
+            "invalid_molecules": invalid,
+            "valid_fraction": round(valid_fraction, 4) if valid_fraction is not None else None,
+            "mw": _stat_dict(mw_vals),
+            "logp": _stat_dict(logp_vals),
+            "qed": _stat_dict(qed_vals),
+            "sa_score": sa_stats,
+            "pains": pains_block,
+            "filters": filters_block,
+            "histograms": {
+                "qed": _histogram(qed_vals, range_min=0.0, range_max=1.0),
+                "mw": _histogram(mw_vals),
+                "logp": _histogram(logp_vals),
+            },
+        }
+    else:
+        rdkit_block = _empty_rdkit_block(
+            rdkit_error=rdkit_error, qed_pass_threshold=qed_pass_threshold
+        )
 
     result: dict[str, Any] = {
         "ok": True,
@@ -144,38 +392,11 @@ def analyze_molecules(csv_path: str | Path, *, max_rows: int | None = None) -> d
         "duplicate_molecules": duplicates,
         "duplicate_fraction": round(duplicate_fraction, 4),
         "reinvent_smiles_state_valid": reinvent_valid_count,
-        "rdkit": {
-            "available": rdkit_available,
-            "error": rdkit_error,
-            "valid_molecules": valid if rdkit_available else None,
-            "invalid_molecules": invalid if rdkit_available else None,
-            "valid_fraction": round(valid_fraction, 4) if valid_fraction is not None else None,
-            "mw": {
-                "mean": _round(_mean(mw_vals)),
-                "stdev": _round(_stdev(mw_vals)),
-                "n": len(mw_vals),
-            },
-            "logp": {
-                "mean": _round(_mean(logp_vals)),
-                "stdev": _round(_stdev(logp_vals)),
-                "n": len(logp_vals),
-            },
-            "qed": {
-                "mean": _round(_mean(qed_vals)),
-                "stdev": _round(_stdev(qed_vals)),
-                "n": len(qed_vals),
-            },
-        },
+        "rdkit": rdkit_block,
         "warnings": warnings,
         "errors": errors,
     }
     return result
-
-
-def _round(value: float | None, ndigits: int = 4) -> float | None:
-    if value is None:
-        return None
-    return round(value, ndigits)
 
 
 def main() -> None:
@@ -183,8 +404,19 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Analyze molecule CSV")
     parser.add_argument("--csv", required=True)
+    parser.add_argument(
+        "--qed-pass-threshold",
+        type=float,
+        default=DEFAULT_QED_PASS_THRESHOLD,
+        help="Count molecules with QED at or above this value (analysis only)",
+    )
     args = parser.parse_args()
-    print(json.dumps(analyze_molecules(args.csv), indent=2))
+    print(
+        json.dumps(
+            analyze_molecules(args.csv, qed_pass_threshold=args.qed_pass_threshold),
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

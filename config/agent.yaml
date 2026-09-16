@@ -61,6 +61,13 @@ critic:
   max_duplicate_fraction: 0.25
   # Absolute minimum molecule count for a successful generation
   min_molecules: 1
+  # Optional. If set, mean QED below this → WARNING.
+  # null: skip the check; never invent a QED mean when it is missing.
+  min_mean_qed: null
+
+analysis:
+  # Count molecules with QED at or above this value (report/stats only).
+  qed_pass_threshold: 0.5
 
 reinvent:
   default_seed: 42
