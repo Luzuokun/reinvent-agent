@@ -73,7 +73,7 @@ evidence JSON are rejected.
 - validation ok / errors
 - REINVENT skipped / success / exit_code / message / argv
 - inventory csv_count
-- analysis counts, duplicate fraction, RDKit summary stats, `analysis_source`
+- analysis counts, duplicate fraction, RDKit summary stats (incl. SA / PAINS / filters when present), `analysis_source`
 - critic numeric thresholds
 
 It does **not** send SMILES lists, CSV contents, HTML, or stdout dumps.
@@ -108,9 +108,10 @@ critic:
   api_key_env: null            # null → provider default env var
   base_url: null               # null → provider default endpoint
   fallback_on_error: true
-  min_valid_fraction: 0.80
-  max_duplicate_fraction: 0.25
-  min_molecules: 1
+    min_valid_fraction: 0.80
+    max_duplicate_fraction: 0.25
+    min_molecules: 1
+    min_mean_qed: null           # optional; skip if QED mean is missing
 ```
 
 `--critic {deterministic,llm}` overrides `critic.mode`. Both default to

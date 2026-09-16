@@ -66,8 +66,13 @@ Rules:
   REINVENT was supposed to run but failed/skipped, analysis failed, or
   molecule count is below the given min_molecules threshold.
 - WARNING for dry-run (approve_run false and skip_reinvent false),
-  high duplicate fraction, low valid-molecule fraction, or missing RDKit —
-  using the numeric thresholds provided in the evidence.
+  high duplicate fraction, low valid-molecule fraction, missing RDKit,
+  or mean QED below thresholds.min_mean_qed when that threshold is a number
+  AND analysis.rdkit.qed.mean is a number.
+- If thresholds.min_mean_qed is set but QED mean is null/missing, do not
+  invent a QED value; note that the threshold was not applied.
+- Mention SA Score, PAINS, or filter counts only if those fields appear in
+  the evidence. Never invent missing descriptor numbers.
 - analysis_source existing_csv means stats are from an existing file, not a
   fresh generation; mention that if relevant (usually WARNING when dry-run).
 - Do not include any other keys.
@@ -164,6 +169,7 @@ class LLMCriticAgent:
             "min_valid_fraction": self._deterministic.min_valid_fraction,
             "max_duplicate_fraction": self._deterministic.max_duplicate_fraction,
             "min_molecules": self._deterministic.min_molecules,
+            "min_mean_qed": self._deterministic.min_mean_qed,
         }
 
     def _fallback_or_raise(

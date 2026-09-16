@@ -128,7 +128,12 @@ class ExecutionAgent:
                         "from_fresh_reinvent": False,
                     }
                 else:
-                    analysis = analyze_molecules(csv_path)
+                    analysis_cfg = self.agent_config.get("analysis") or {}
+                    raw_thr = analysis_cfg.get("qed_pass_threshold", 0.5)
+                    qed_pass_threshold = 0.5 if raw_thr is None else float(raw_thr)
+                    analysis = analyze_molecules(
+                        csv_path, qed_pass_threshold=qed_pass_threshold
+                    )
                     source = self._analysis_source(results, plan)
                     analysis["analysis_source"] = source
                     analysis["from_fresh_reinvent"] = source == "fresh_run"

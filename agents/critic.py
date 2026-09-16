@@ -13,6 +13,12 @@ class CriticAgent:
         self.min_valid_fraction = float(critic_cfg.get("min_valid_fraction", 0.80))
         self.max_duplicate_fraction = float(critic_cfg.get("max_duplicate_fraction", 0.25))
         self.min_molecules = int(critic_cfg.get("min_molecules", 1))
+        raw_qed = critic_cfg.get("min_mean_qed")
+        self.min_mean_qed: float | None
+        if raw_qed is None or raw_qed == "":
+            self.min_mean_qed = None
+        else:
+            self.min_mean_qed = float(raw_qed)
 
     def review(self, results: dict[str, Any]) -> dict[str, Any]:
         issues: list[str] = []
@@ -79,6 +85,23 @@ class CriticAgent:
                 f"{self.min_valid_fraction:.0%}"
             )
 
+        qed_stats = rdkit.get("qed") if isinstance(rdkit.get("qed"), dict) else {}
+        qed_mean = qed_stats.get("mean") if isinstance(qed_stats, dict) else None
+        if self.min_mean_qed is not None:
+            if qed_mean is None:
+                if status == "PASS":
+                    status = "WARNING"
+                issues.append(
+                    "min_mean_qed is configured but QED mean is unavailable; "
+                    "threshold not applied (no value invented)"
+                )
+            elif qed_mean < self.min_mean_qed:
+                if status == "PASS":
+                    status = "WARNING"
+                issues.append(
+                    f"Mean QED {qed_mean:.4f} below threshold {self.min_mean_qed:.4f}"
+                )
+
         if not rdkit.get("available") and analysis.get("ok"):
             if status == "PASS":
                 status = "WARNING"
@@ -113,5 +136,6 @@ class CriticAgent:
                 "min_valid_fraction": self.min_valid_fraction,
                 "max_duplicate_fraction": self.max_duplicate_fraction,
                 "min_molecules": self.min_molecules,
+                "min_mean_qed": self.min_mean_qed,
             },
         }

@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-15**.
+Last updated: **2026-09-16**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,13 +35,12 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：多 provider LLM（openai / xai / gemini / openai_compatible）。** Phase 3 的可选 LLM Planner / Critic 仍在；客户端构造集中在 `agents/llm_client.py`，不再写死 OpenAI。
+**当前：CSV 描述符 + HTML 直方图（v0.5）。** 离线分析在已有 CSV 上计算 SA Score、PAINS、QED 过滤计数；HTML 报告内嵌 QED / MW / logP 的 SVG 直方图。确定性 Critic 增加可选 `min_mean_qed`（缺 QED 均值则不编造、不套用）。Phase 2/3 的可选 LLM Planner / Critic 与多 provider 客户端不变。
 
-- `config/agent.yaml`：`planner.provider` / `critic.provider`；`model` / `base_url` / `api_key_env` 为 `null` 时用 provider 预设。
-- CLI：`--provider xai` 同时覆盖正在使用的 LLM planner/critic。
-- 密钥只从环境变量读（`OPENAI_API_KEY` / `XAI_API_KEY` 或 `GROK_API_KEY` / `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`）。仓库内不放 key。
-- 缺 key / provider 错误：行为与现在相同（默认 fallback + 大声 WARNING）。
-- 安全不变量不变。
+- `analysis/molecule_analysis.py`：SA / PAINS / filters / histogram bins；RDKit 或 Contrib 缺失时字段为 `null`。
+- `analysis/report.py`：3 张内嵌 SVG，不是只 dump JSON。
+- `config/agent.yaml`：`critic.min_mean_qed`（默认 `null`）、`analysis.qed_pass_threshold`。
+- 安全不变量不变：不改 `reinvent.toml`，不新增 Agent 类，不引入 MCP / docking / MD。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -86,6 +85,13 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `--provider`；yaml `provider` / `model` / `base_url` / `api_key_env`
 - 测试全部 mock，CI 不访问网络
 
+### CSV 描述符与 HTML 直方图（v0.5）
+
+- SA Score（`rdkit.Contrib.SA_Score`）、PAINS（FilterCatalog）、QED ≥ 阈值 / PAINS-free 计数
+- `reports/report_*.html` 内嵌 QED / MW / logP 三张 SVG 直方图
+- Critic 可选 `min_mean_qed`；QED 均值缺失时不编造
+- `docs/csv-analysis-report.md`；测试不依赖 GPU / 网络 / API key
+
 ### 测试与文档
 
 - `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全
@@ -123,10 +129,10 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3 与多 provider LLM 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3、多 provider LLM、以及 CSV 描述符 / HTML 直方图已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. MCP tool packaging（把现有 tools 暴露给外部客户端，仍 allowlist）
-2. 更丰富的分析（描述符、简单过滤）——仍基于已有 CSV
+2. 人写的实验预设 ID（Planner 只许输出预设，不得生成 TOML）
 3. Docking / MD 作为 **独立 tool 模块**（各自的人批与环境），不是塞进当前 Executor
 4. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
 
@@ -152,6 +158,7 @@ projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`
 config/agent.yaml          planner / critic / 路径 / 阈值
 docs/phase2-llm-planner.md
 docs/phase3-llm-critic.md
+docs/csv-analysis-report.md
 logs/runs/<utc>/result.json
 reports/report_*.html
 ```
@@ -219,4 +226,4 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 
 ## 维护说明
 
-改管线、安全边界、或阶段目标时同步更新本文件日期与第 2–6 节。细节以代码和 `docs/phase*.md` 为准。
+改管线、安全边界、或阶段目标时同步更新本文件日期与第 2–6 节。细节以代码和 `docs/` 为准。
