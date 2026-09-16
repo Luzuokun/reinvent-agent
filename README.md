@@ -3,11 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.5 scope:** same pipeline as v0.4, plus SA Score / PAINS / simple QED
-filters on existing CSV analysis, and **embedded SVG histograms** (QED, MW,
-logP) in the HTML report. Optional critic threshold `min_mean_qed` does not
-invent a QED mean when it is missing. Deterministic planning and critic remain
-the default. See
+**v0.6 scope:** same pipeline as v0.5, plus an optional **stdio MCP server**
+that wraps the existing allowlisted tools (`check_environment`,
+`analyze_molecules`, …). MCP is a new entry point for Cursor and other
+clients; it does not add shell, docking, MD, or TOML editing. Deterministic
+planning and critic remain the default. See
+[docs/mcp-tools.md](docs/mcp-tools.md),
 [docs/csv-analysis-report.md](docs/csv-analysis-report.md),
 [docs/phase2-llm-planner.md](docs/phase2-llm-planner.md) and
 [docs/phase3-llm-critic.md](docs/phase3-llm-critic.md).
@@ -16,6 +17,7 @@ Project intent and stage notes: [AI_CONTEXT.md](AI_CONTEXT.md).
 No LLM tool-calling. The planner may only return a JSON plan of allowlisted step
 names. The critic may only return `PASS`/`WARNING`/`FAIL` JSON from structured
 evidence. Agents never execute arbitrary shell; they only call predefined tools.
+The MCP server advertises those same tools only.
 
 ## Requirements
 
@@ -33,6 +35,8 @@ conda activate reinvent4
 pip install -r requirements.txt
 # optional, only for --planner llm / --critic llm (same SDK for xAI / Gemini):
 pip install 'openai>=1.40'
+# optional, only for the MCP stdio server (Cursor / other MCP clients):
+pip install 'mcp>=1.9,<2'
 ```
 
 ## Place the prior (required for real runs)
@@ -160,7 +164,38 @@ python main.py \
   --approve-run --yes
 ```
 
-Offline analysis only (uses the bundled sample CSV, no REINVENT):
+### MCP server (optional)
+
+Same eight allowlisted tools as the planner, over stdio. No shell tool.
+Requires `pip install 'mcp>=1.9,<2'` (or `pip install '.[mcp]'`).
+
+```bash
+python -m tools.mcp_server
+```
+
+Cursor (`~/.cursor/mcp.json` or project MCP settings), with `cwd` set to this
+repo:
+
+```json
+{
+  "mcpServers": {
+    "reinvent-agent": {
+      "command": "python",
+      "args": ["-m", "tools.mcp_server"],
+      "cwd": "/path/to/reinvent-agent"
+    }
+  }
+}
+```
+
+Clients can call `check_environment` and `analyze_molecules` (CSV must already
+live under `<project>/output/`). They cannot call arbitrary shell.
+`run_reinvent` still requires `approve_run: true` and uses the predefined
+argv only. Details: [docs/mcp-tools.md](docs/mcp-tools.md).
+
+### Offline analysis
+
+Uses the bundled sample CSV, no REINVENT:
 
 ```bash
 python main.py \
@@ -241,6 +276,7 @@ Run from the repo root with `conda activate reinvent4`.
 6. REINVENT requires `--approve-run`, plus interactive confirm or `--yes`.
 7. Every action is logged under `logs/` (including per-run `result.json`).
 8. Optional LLM critic is evidence-only: no tools, no shell, no invented docking/MD/literature.
+9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 
 ## Relation to other projects
 
@@ -254,10 +290,10 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / analysis / artefacts
+tools/           Validated environment / reinvent / files / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 projects/        Sandboxed REINVENT projects (demo_project)
-docs/            Phase design notes (csv-analysis-report.md, phase2-llm-planner.md, phase3-llm-critic.md)
+docs/            Phase design notes (mcp-tools.md, csv-analysis-report.md, phase2-llm-planner.md, phase3-llm-critic.md)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml
