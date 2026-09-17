@@ -41,6 +41,7 @@ def test_write_run_result(tmp_path: Path):
     assert payload["critic_status"] == "WARNING"
     assert payload["exit_code"] == 0
     assert payload["plan"]["steps"] == ["check_environment"]
+    assert payload["run_id"] == run_dir.name
 
 
 def test_prepare_reinvent_command_shape():

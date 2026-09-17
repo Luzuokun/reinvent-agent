@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionAgent:
-    """Execute an approved plan using validated tools."""
+    """Execute an approved plan using validated tools.
+
+    Single-shot: one ``execute()`` walks the plan once. Parameter tweaks
+    are a human re-invoking the CLI (``--from-run``), not an agent loop.
+    """
 
     def __init__(self, agent_config: dict[str, Any] | None = None) -> None:
         self.agent_config = agent_config or {}
@@ -204,6 +208,8 @@ class ExecutionAgent:
             "dry_run": dry_run,
             "analysis_source": analysis.get("analysis_source"),
             "run_type": _run_type(results),
+            "run_id": results.get("run_id"),
+            "from_run": results.get("from_run"),
         }
         report_meta = generate_html_report(payload)
         results["steps"]["generate_report"] = report_meta

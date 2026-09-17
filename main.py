@@ -22,6 +22,12 @@ from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
 from tools.artifacts import create_run_dir, write_run_result
 from tools.envfile import load_repo_dotenv
+from tools.from_run import (
+    FromRunError,
+    apply_from_run,
+    explicit_cli_flags,
+    snapshot_invocation,
+)
 from tools.reinvent import confirm_reinvent_launch, prepare_reinvent_command
 
 
@@ -150,11 +156,26 @@ def build_parser() -> argparse.ArgumentParser:
             "selects that preset)."
         ),
     )
+    parser.add_argument(
+        "--from-run",
+        default=None,
+        metavar="ID",
+        help=(
+            "Copy experiment CLI config from logs/runs/<id>/result.json "
+            "(or 'last'). Copies project/goal/preset/scaffold/seed/"
+            "planner/critic/provider/config. Does not copy --approve-run, "
+            "--yes, or --skip-reinvent. Launch still requires --approve-run. "
+            "The executor stays single-shot; the agent will not edit TOML "
+            "or loop."
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    args = build_parser().parse_args(argv_list)
+    explicit = explicit_cli_flags(argv_list)
     agent_config = overlay_provider(
         load_agent_config(Path(args.config)),
         getattr(args, "provider", None),
@@ -169,7 +190,27 @@ def main(argv: list[str] | None = None) -> int:
             "Loaded %s variable(s) from .env (existing environment values were kept)",
             len(loaded_env),
         )
+
+    from_run_meta: dict | None = None
+    if args.from_run:
+        try:
+            from_run_meta = apply_from_run(
+                args, logs_dir=logs_dir, explicit=explicit
+            )
+        except FromRunError as exc:
+            print(f"\nERROR: --from-run failed: {exc}")
+            logger.error("from-run failed: %s", exc)
+            return 2
+        if "config" in (from_run_meta.get("copied") or []) and "config" not in explicit:
+            agent_config = overlay_provider(
+                load_agent_config(Path(args.config)),
+                getattr(args, "provider", None),
+            )
+            logs_dirname = agent_config.get("logging", {}).get("logs_dirname", "logs")
+            logs_dir = REPO_ROOT / logs_dirname
+
     run_dir = create_run_dir(logs_dir)
+    invocation = snapshot_invocation(args)
 
     project_dir = Path(args.project)
     if not project_dir.is_absolute():
@@ -186,10 +227,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Goal:    {args.goal}")
     print(f"Log:     {log_path}")
     print(f"Run dir: {run_dir}")
+    print(f"Run id:  {run_dir.name}")
     if args.preset:
         print(f"Preset:  {args.preset}")
     if args.scaffold:
         print(f"Scaffold: {args.scaffold}")
+    if from_run_meta:
+        print(f"From run: {from_run_meta.get('run_id')}")
+        copied = from_run_meta.get("copied") or []
+        overridden = from_run_meta.get("overridden") or []
+        if copied:
+            print(f"  copied: {', '.join(copied)}")
+        if overridden:
+            print(f"  CLI override: {', '.join(overridden)}")
+        print("  not copied: --approve-run, --yes, --skip-reinvent")
+        for warning in from_run_meta.get("warnings") or []:
+            print(f"WARNING: {warning}")
 
     try:
         plan = _create_plan(
@@ -368,6 +421,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  - {issue}")
     print(f"Recommendation: {verdict['recommendation']}")
 
+    results["run_id"] = run_dir.name
+    results["invocation"] = invocation
+    if from_run_meta:
+        results["from_run"] = from_run_meta
+
     report_meta = executor.write_report(results, goal=args.goal, critic=verdict)
     print("\n[Report]")
     print(f"Wrote: {report_meta.get('report_path')}")
@@ -381,12 +439,15 @@ def main(argv: list[str] | None = None) -> int:
         critic=verdict,
         report=report_meta,
         exit_code=exit_code,
+        invocation=invocation,
+        from_run=from_run_meta,
     )
     summary_path = logs_dir / "last_run_summary.json"
     summary_path.write_text(
         dumps_pretty(
             {
                 "run_dir": str(run_dir),
+                "run_id": run_dir.name,
                 "result_json": str(result_path),
                 "results": results,
                 "critic": verdict,
@@ -397,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Wrote run artefact %s", result_path)
     logger.info("Wrote summary %s", summary_path)
     print(f"Result: {result_path}")
+    print("\nTo copy this config after reading the report (still needs --approve-run):")
+    print(f"  python main.py --from-run {run_dir.name} --approve-run")
 
     _banner("DONE")
     return exit_code

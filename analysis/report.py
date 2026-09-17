@@ -291,6 +291,45 @@ def _render_analysis(analysis: dict[str, Any]) -> str:
     )
 
 
+def _render_rerun(payload: dict[str, Any]) -> str:
+    """HITL rerun instructions. The agent never edits TOML or loops."""
+    run_id = payload.get("run_id")
+    from_run = payload.get("from_run") if isinstance(payload.get("from_run"), dict) else {}
+    if isinstance(run_id, str) and run_id.strip():
+        rid = run_id.strip()
+        cmd = f"python main.py --from-run {rid} --approve-run"
+        id_note = f"<p>This run id: <code>{_esc(rid)}</code></p>"
+    else:
+        cmd = "python main.py --from-run <id> --approve-run"
+        id_note = (
+            "<p class='muted'>Run id is the UTC folder name under "
+            "<code>logs/runs/</code>.</p>"
+        )
+
+    extra = ""
+    if from_run:
+        extra = _kv_table(
+            {
+                "copied from": from_run.get("run_id"),
+                "copied fields": from_run.get("copied"),
+                "CLI overrides": from_run.get("overridden"),
+            }
+        )
+
+    return (
+        "<p>This executor is <strong>single-shot</strong>. After you read this "
+        "report, re-invoke the CLI yourself. Change <code>--preset</code>, "
+        "<code>--goal</code>, or <code>--scaffold</code> on that command if the "
+        "numbers look wrong. The agent will not edit TOML or loop.</p>"
+        f"{id_note}"
+        f"<pre>{_esc(cmd)}</pre>"
+        "<p class='muted'><code>--approve-run</code> is never copied from a "
+        "previous run. Add <code>--yes</code> only for non-interactive "
+        "approval.</p>"
+        + extra
+    )
+
+
 def _render_html(payload: dict[str, Any]) -> str:
     goal = payload.get("goal", "")
     project = payload.get("project", {})
@@ -347,6 +386,8 @@ def _render_html(payload: dict[str, Any]) -> str:
         )
 
     parts = [
+        _section("Human rerun", _render_rerun(payload)),
+
         _section("Project", _kv_table({"goal": goal, **(project if isinstance(project, dict) else {"project": project})})),
         _section("Environment", _kv_table(environment if isinstance(environment, dict) else {})),
         _section("Validation", _kv_table(validation if isinstance(validation, dict) else {})),

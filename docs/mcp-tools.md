@@ -25,8 +25,8 @@ existing tools / analysis / CriticAgent
 
 The CLI (`main.py` → Planner → Executor → Critic) is unchanged. MCP does not
 replace it and does not introduce CrewAI / LangGraph / Agents SDK. Experiment
-presets (`--preset`) are CLI / planner only; this server does not grow a
-preset tool.
+presets (`--preset`) are CLI / planner first. HITL rerun (`--from-run`) is
+also CLI-only; this server does not grow a from-run tool.
 
 | MCP tool | Existing function | Restrictions (same as CLI / planner) |
 |----------|-------------------|--------------------------------------|
@@ -91,6 +91,6 @@ opens a real stdio session and checks `tools/list` + `check_environment` /
 
 ## Out of scope
 
-Docking, MD, literature search, experiment preset IDs, LLM-written
-`reinvent.toml`, and any Agent framework. Those remain later phases.
-The executor is not rewritten to speak MCP internally.
+Docking, MD, literature search, experiment preset IDs, `--from-run`,
+LLM-written `reinvent.toml`, and any Agent framework. Those remain CLI /
+later phases. The executor is not rewritten to speak MCP internally.

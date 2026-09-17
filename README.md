@@ -3,7 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.7 scope:** same pipeline as v0.6, plus **human-written experiment presets**.
+**v0.8 scope:** same pipeline as v0.7, plus **human-in-the-loop rerun**.
+`--from-run <id>` copies experiment CLI config from
+`logs/runs/<id>/result.json`. The executor stays single-shot; the agent does
+not edit TOML or loop. Launch still requires `--approve-run`. See
+[docs/from-run.md](docs/from-run.md).
+v0.7 added **human-written experiment presets**.
 The planner may name a preset ID (`sampling-cpu-100`, `sampling-cpu-1000`,
 `sampling-cpu-scaffold`); it cannot generate TOML. Launch still requires
 `--approve-run`. See [docs/experiment-presets.md](docs/experiment-presets.md).
@@ -209,6 +214,28 @@ python main.py \
 Illegal preset IDs are rejected by argparse / schema. Out-of-sandbox scaffold
 paths are schema-rejected; the LLM planner falls back to the deterministic plan.
 
+### Human-in-the-loop rerun (`--from-run`)
+
+The executor does not loop. After you read `reports/report_*.html`, re-invoke
+the CLI. `--from-run <id>` copies project / goal / preset / scaffold / seed
+from `logs/runs/<id>/result.json`. It never copies `--approve-run`, `--yes`,
+or `--skip-reinvent`. Change parameters yourself on the new command.
+Details: [docs/from-run.md](docs/from-run.md).
+
+```bash
+# After reading the report from run 20260917_120000:
+python main.py --from-run 20260917_120000 --approve-run --yes
+
+# Same identity, human switches 100 → 1000 molecules:
+python main.py \
+  --from-run 20260917_120000 \
+  --preset sampling-cpu-1000 \
+  --approve-run --yes
+
+# Most recent result.json
+python main.py --from-run last --approve-run
+```
+
 ### MCP server (optional)
 
 Same eight allowlisted tools as the planner, over stdio. No shell tool.
@@ -276,11 +303,12 @@ python main.py \
 Every invocation writes:
 
 - `logs/runs/<UTC_timestamp>/result.json` — full structured payload (plan, env,
-  validation, reinvent, analysis, critic, report path)
-- `logs/last_run_summary.json` — pointer + copy of the latest summary
-- `reports/report_<timestamp>.html` — self-contained HTML report
+  validation, reinvent, analysis, critic, report path, `run_id`, `invocation`)
+- `logs/last_run_summary.json` — pointer (`run_id`) + copy of the latest summary
+- `reports/report_<timestamp>.html` — self-contained HTML report (includes the
+  `--from-run <id> --approve-run` command)
 
-## Acceptance checklist (5 scenarios)
+## Acceptance checklist (6 scenarios)
 
 Run from the repo root with `conda activate reinvent4`.
 
@@ -324,6 +352,18 @@ Run from the repo root with `conda activate reinvent4`.
    Expect: REINVENT `success=True`, molecule stats, Critic `PASS`/`WARNING`,
    new HTML under `reports/`, and `logs/runs/*/result.json`.
 
+6. **HITL rerun (`--from-run`)**
+   ```bash
+   python main.py --project projects/demo_project --goal "First look" \
+     --preset sampling-cpu-100 --skip-reinvent \
+     --csv projects/demo_project/output/sampled-sample.csv
+   # note the printed Run id, then:
+   python main.py --from-run <that-id> --preset sampling-cpu-1000
+   ```
+   Expect: second invocation copies project/goal; CLI override changes preset;
+   REINVENT is **not** launched without `--approve-run`; HTML shows a
+   `--from-run … --approve-run` command; exit `0` (dry-run `WARNING`).
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -336,6 +376,8 @@ Run from the repo root with `conda activate reinvent4`.
 8. Optional LLM critic is evidence-only: no tools, no shell, no invented docking/MD/literature.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
+11. `--from-run` copies CLI identity only. It never copies `--approve-run` /
+    `--yes`, never edits `reinvent.toml`, and never starts an agent retry loop.
 
 ## Relation to other projects
 
@@ -353,7 +395,7 @@ tools/           Validated environment / reinvent / files / smiles_prep / analys
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets (IDs only; never model-authored)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
-docs/            Phase design notes (experiment-presets.md, mcp-tools.md, …)
+docs/            Phase design notes (from-run.md, experiment-presets.md, mcp-tools.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

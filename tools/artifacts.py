@@ -30,6 +30,8 @@ def write_run_result(
     critic: dict[str, Any],
     report: dict[str, Any] | None = None,
     exit_code: int,
+    invocation: dict[str, Any] | None = None,
+    from_run: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``result.json`` with the full structured workflow payload."""
     run_dir = Path(run_dir).expanduser().resolve()
@@ -39,10 +41,13 @@ def write_run_result(
     reinvent = steps.get("run_reinvent") or {}
     payload = {
         "schema_version": 1,
+        "run_id": run_dir.name,
         "goal": goal,
         "exit_code": exit_code,
         "critic_status": critic.get("status"),
         "plan": plan,
+        "invocation": invocation or results.get("invocation"),
+        "from_run": from_run or results.get("from_run"),
         "environment": steps.get("check_environment"),
         "validation": steps.get("validate_project"),
         "prepare_execution": steps.get("prepare_execution"),
