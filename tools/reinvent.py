@@ -235,45 +235,78 @@ def find_output_files(
     output_dir: str | Path,
     *,
     project_dir: str | Path | None = None,
+    extra_dirs: list[str | Path] | None = None,
 ) -> dict[str, Any]:
-    """Inventory files under the configured output directory only."""
+    """Inventory files under the configured output directory (and optional extras)."""
     output_dir = Path(output_dir).expanduser().resolve()
+    project: Path | None = None
     if project_dir is not None:
-        project_dir = Path(project_dir).expanduser().resolve()
-        resolve_under_root(project_dir, output_dir.relative_to(project_dir))
+        project = Path(project_dir).expanduser().resolve()
+        resolve_under_root(project, output_dir.relative_to(project))
 
-    if not output_dir.is_dir():
+    roots: list[Path] = []
+    if output_dir.is_dir():
+        roots.append(output_dir)
+    extra_error: str | None = None
+    for extra in extra_dirs or []:
+        extra_path = Path(extra).expanduser().resolve()
+        if project is not None:
+            try:
+                extra_path.relative_to(project)
+            except ValueError:
+                extra_error = f"extra_dir escapes project: {extra_path}"
+                continue
+        if extra_path.is_dir() and extra_path not in roots:
+            roots.append(extra_path)
+
+    if not roots:
         return {
             "ok": False,
             "output_dir": str(output_dir),
             "files": [],
             "csv_files": [],
-            "error": f"Output directory does not exist: {output_dir}",
+            "model_files": [],
+            "count": 0,
+            "csv_count": 0,
+            "model_count": 0,
+            "error": extra_error or f"Output directory does not exist: {output_dir}",
         }
 
     files: list[dict[str, Any]] = []
     csv_files: list[str] = []
-    for path in sorted(output_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = str(path.relative_to(output_dir))
-        info = {
-            "path": str(path),
-            "relative": rel,
-            "size_bytes": path.stat().st_size,
-            "suffix": path.suffix.lower(),
-        }
-        files.append(info)
-        if path.suffix.lower() == ".csv":
-            csv_files.append(str(path))
+    model_files: list[str] = []
+    rel_root = project or output_dir
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                rel = str(path.relative_to(rel_root))
+            except ValueError:
+                rel = str(path.relative_to(root))
+            suffix = path.suffix.lower()
+            info = {
+                "path": str(path),
+                "relative": rel,
+                "size_bytes": path.stat().st_size,
+                "suffix": suffix,
+            }
+            files.append(info)
+            if suffix == ".csv":
+                csv_files.append(str(path))
+            if suffix in {".model", ".chkpt"}:
+                model_files.append(str(path))
 
     return {
         "ok": True,
         "output_dir": str(output_dir),
         "files": files,
         "csv_files": csv_files,
+        "model_files": model_files,
         "count": len(files),
         "csv_count": len(csv_files),
+        "model_count": len(model_files),
+        "error": extra_error,
     }
 
 

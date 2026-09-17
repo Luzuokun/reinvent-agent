@@ -62,6 +62,23 @@ ln -sf \
 `projects/demo_project/reinvent.toml` is a Tutorial-01-style CPU sampling job
 (`num_smiles = 100`). It does not wrap the large EGFR GPU workflow.
 
+`projects/demo_tl/reinvent.toml` is a **CPU transfer-learning** demo (1 epoch,
+bundled `input/tl_train.smi`). The artefact is a model checkpoint, not a new
+molecule CSV.
+
+**Research vs Chemistry:** literature / ChEMBL download belongs to a future
+Research tool (not implemented here). Local SMILES cleaning is
+`python -m tools.smiles_prep` (no network; not a Planner step). Running the
+predefined TL TOML is the existing Chemistry / REINVENT executor.
+
+Place the same prior used for sampling:
+
+```bash
+mkdir -p projects/demo_tl/priors
+ln -sf "$(pwd)/projects/demo_project/priors/reinvent.prior" \
+  projects/demo_tl/priors/reinvent.prior
+```
+
 ## CLI
 
 Dry-run (inspect, validate, plan — does **not** launch REINVENT).
@@ -90,8 +107,9 @@ python main.py \
 
 Optional LLM planner and/or critic (each falls back to its deterministic
 implementation with a loud warning if the API key is missing, the provider
-errors, or the JSON fails validation). Keys come from the environment only
-(never from files in the repo). `.env` is gitignored if you use one.
+errors, or the JSON fails validation). Keys are read from the process
+environment. A gitignored repo-root `.env` is loaded at startup; existing
+environment values are kept. Never put keys in yaml or git.
 
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -123,6 +141,7 @@ or `gemini-3.8-flash`).
 xAI (no OpenAI quota):
 
 ```bash
+# XAI_API_KEY=... in a gitignored .env, or:
 export XAI_API_KEY=...          # or GROK_API_KEY
 python main.py \
   --project projects/demo_project \
@@ -203,6 +222,19 @@ python main.py \
   --goal "Analyze existing sample molecules." \
   --skip-reinvent \
   --csv projects/demo_project/output/sampled-sample.csv
+```
+
+CPU transfer learning (writes `projects/demo_tl/models/demo_tl.model`;
+analysis is the **training** SMILES, not a new sample). Rebuild the bundled
+`.smi` from a local CSV if needed:
+
+```bash
+python -m tools.smiles_prep --project projects/demo_tl \
+  --source projects/demo_project/output/sampled-sample.csv
+python main.py \
+  --project projects/demo_tl \
+  --goal "Fine-tune prior on bundled SMILES via transfer learning." \
+  --approve-run --yes
 ```
 
 ### Exit codes (aligned with Critic)
@@ -290,9 +322,9 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
-projects/        Sandboxed REINVENT projects (demo_project)
+projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
 docs/            Phase design notes (mcp-tools.md, csv-analysis-report.md, phase2-llm-planner.md, phase3-llm-critic.md)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts

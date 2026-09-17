@@ -75,6 +75,9 @@ Rules:
   the evidence. Never invent missing descriptor numbers.
 - analysis_source existing_csv means stats are from an existing file, not a
   fresh generation; mention that if relevant (usually WARNING when dry-run).
+- analysis_source tl_training_set means stats are the transfer-learning
+  training SMILES, not molecules sampled from the new model. Do not claim
+  a new generation. The artefact is a model checkpoint if present.
 - Do not include any other keys.
 - Do not emit shell commands.
 """

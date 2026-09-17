@@ -45,6 +45,11 @@ def test_analyze_sample_csv():
     if rdkit.get("available"):
         assert rdkit["sa_score"]["mean"] is not None or rdkit["sa_score"]["available"] is False
         assert rdkit["pains"]["molecules_with_hits"] is not None or rdkit["pains"]["available"] is False
+        lipinski = rdkit.get("lipinski") or {}
+        assert lipinski.get("rules")
+        assert lipinski.get("pass") is not None
+        assert lipinski.get("fraction") is not None
+        assert rdkit.get("tpsa", {}).get("n", 0) > 0
     else:
         assert rdkit["sa_score"]["mean"] is None
         assert rdkit["pains"]["molecules_with_hits"] is None

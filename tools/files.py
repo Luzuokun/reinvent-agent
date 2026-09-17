@@ -52,30 +52,11 @@ def validate_project(
             if not isinstance(params, dict):
                 errors.append("[parameters] section must be a table")
                 params = {}
-            model_file = params.get("model_file")
-            output_file = params.get("output_file")
-            details["model_file"] = model_file
-            details["output_file"] = output_file
-            details["num_smiles"] = params.get("num_smiles")
-
-            if not model_file:
-                errors.append("parameters.model_file is missing")
+            run_type = str(toml_data.get("run_type") or "").strip().lower()
+            if run_type == "transfer_learning":
+                _validate_transfer_learning(project, params, details, errors, warnings)
             else:
-                model_path = resolve_under_root(project, model_file)
-                details["model_path"] = str(model_path)
-                if not model_path.is_file():
-                    errors.append(f"model_file not found: {model_path}")
-
-            if not output_file:
-                warnings.append("parameters.output_file is missing")
-            else:
-                output_path = resolve_under_root(project, output_file)
-                details["resolved_output_file"] = str(output_path)
-                out_parent = output_path.parent
-                if not out_parent.is_dir():
-                    warnings.append(
-                        f"output parent directory does not exist yet: {out_parent}"
-                    )
+                _validate_sampling(project, params, details, errors, warnings)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Failed to parse TOML: {exc}")
 
@@ -94,6 +75,121 @@ def validate_project(
         "warnings": warnings,
         "details": details,
     }
+
+
+def _validate_sampling(
+    project: Path,
+    params: dict[str, Any],
+    details: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    model_file = params.get("model_file")
+    output_file = params.get("output_file")
+    details["model_file"] = model_file
+    details["output_file"] = output_file
+    details["num_smiles"] = params.get("num_smiles")
+
+    if not model_file:
+        errors.append("parameters.model_file is missing")
+    else:
+        try:
+            model_path = resolve_under_root(
+                project, model_file, follow_symlinks=False
+            )
+        except PermissionError as exc:
+            errors.append(str(exc))
+            return
+        details["model_path"] = str(model_path)
+        if not model_path.is_file():
+            errors.append(f"model_file not found: {model_path}")
+
+    if not output_file:
+        warnings.append("parameters.output_file is missing")
+    else:
+        try:
+            output_path = resolve_under_root(project, output_file)
+        except PermissionError as exc:
+            errors.append(str(exc))
+            return
+        details["resolved_output_file"] = str(output_path)
+        out_parent = output_path.parent
+        if not out_parent.is_dir():
+            warnings.append(
+                f"output parent directory does not exist yet: {out_parent}"
+            )
+
+
+def _validate_transfer_learning(
+    project: Path,
+    params: dict[str, Any],
+    details: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    input_model = params.get("input_model_file")
+    smiles_file = params.get("smiles_file")
+    output_model = params.get("output_model_file")
+    validation_smiles = params.get("validation_smiles_file")
+    details["input_model_file"] = input_model
+    details["smiles_file"] = smiles_file
+    details["output_model_file"] = output_model
+    details["validation_smiles_file"] = validation_smiles
+    details["num_epochs"] = params.get("num_epochs")
+
+    if not input_model:
+        errors.append("parameters.input_model_file is missing")
+    else:
+        try:
+            input_path = resolve_under_root(
+                project, input_model, follow_symlinks=False
+            )
+        except PermissionError as exc:
+            errors.append(str(exc))
+        else:
+            details["input_model_path"] = str(input_path)
+            if not input_path.is_file():
+                errors.append(f"input_model_file not found: {input_path}")
+
+    if not smiles_file:
+        errors.append("parameters.smiles_file is missing")
+    else:
+        try:
+            smiles_path = resolve_under_root(
+                project, smiles_file, follow_symlinks=False
+            )
+        except PermissionError as exc:
+            errors.append(str(exc))
+        else:
+            details["smiles_path"] = str(smiles_path)
+            if not smiles_path.is_file():
+                errors.append(f"smiles_file not found: {smiles_path}")
+
+    if not output_model:
+        errors.append("parameters.output_model_file is missing")
+    else:
+        try:
+            output_path = resolve_under_root(project, output_model)
+        except PermissionError as exc:
+            errors.append(str(exc))
+        else:
+            details["resolved_output_model"] = str(output_path)
+            if not output_path.parent.is_dir():
+                warnings.append(
+                    f"output model directory does not exist yet: {output_path.parent}"
+                )
+
+    if validation_smiles:
+        try:
+            val_path = resolve_under_root(
+                project, validation_smiles, follow_symlinks=False
+            )
+        except PermissionError as exc:
+            errors.append(str(exc))
+        else:
+            details["validation_smiles_path"] = str(val_path)
+            if not val_path.is_file():
+                errors.append(f"validation_smiles_file not found: {val_path}")
 
 
 def main() -> None:

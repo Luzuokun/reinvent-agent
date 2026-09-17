@@ -107,40 +107,26 @@ class ExecutionAgent:
                     break
 
             elif step == "find_output":
-                inventory = find_output_files(output_dir, project_dir=project_dir)
+                extra_dirs: list[Path] = []
+                models_dir = project_dir / "models"
+                if models_dir.is_dir():
+                    extra_dirs.append(models_dir)
+                inventory = find_output_files(
+                    output_dir,
+                    project_dir=project_dir,
+                    extra_dirs=extra_dirs,
+                )
                 results["steps"]["find_output"] = inventory
 
             elif step == "analyze_molecules":
-                csv_path = self._resolve_csv(
+                self._analyze_molecules_step(
                     results,
+                    plan=plan,
                     csv_override=csv_override,
                     config_path=config_path,
                     project_dir=project_dir,
                     output_dir=output_dir,
                 )
-                if csv_path is None:
-                    msg = "No CSV found for analysis"
-                    results["errors"].append(msg)
-                    results["steps"]["analyze_molecules"] = {
-                        "ok": False,
-                        "errors": [msg],
-                        "analysis_source": self._analysis_source(results, plan),
-                        "from_fresh_reinvent": False,
-                    }
-                else:
-                    analysis_cfg = self.agent_config.get("analysis") or {}
-                    raw_thr = analysis_cfg.get("qed_pass_threshold", 0.5)
-                    qed_pass_threshold = 0.5 if raw_thr is None else float(raw_thr)
-                    analysis = analyze_molecules(
-                        csv_path, qed_pass_threshold=qed_pass_threshold
-                    )
-                    source = self._analysis_source(results, plan)
-                    analysis["analysis_source"] = source
-                    analysis["from_fresh_reinvent"] = source == "fresh_run"
-                    results["steps"]["analyze_molecules"] = analysis
-                    results["warnings"].extend(analysis.get("warnings") or [])
-                    if not analysis.get("ok"):
-                        results["errors"].extend(analysis.get("errors") or [])
 
             elif step == "generate_report":
                 # Filled after critic in main, or here with partial payload
@@ -180,20 +166,100 @@ class ExecutionAgent:
             "errors": results.get("errors", []),
             "dry_run": dry_run,
             "analysis_source": analysis.get("analysis_source"),
+            "run_type": _run_type(results),
         }
         report_meta = generate_html_report(payload)
         results["steps"]["generate_report"] = report_meta
         return report_meta
 
+    def _analyze_molecules_step(
+        self,
+        results: dict[str, Any],
+        *,
+        plan: dict[str, Any],
+        csv_override: str | Path | None,
+        config_path: Path,
+        project_dir: Path,
+        output_dir: Path,
+    ) -> None:
+        molecule_path = self._resolve_molecule_file(
+            results,
+            csv_override=csv_override,
+            config_path=config_path,
+            project_dir=project_dir,
+            output_dir=output_dir,
+        )
+        source = self._analysis_source(results, plan)
+        if molecule_path is None:
+            msg = (
+                "No training SMILES file found for transfer learning"
+                if source == "tl_training_set"
+                else "No CSV found for analysis"
+            )
+            results["errors"].append(msg)
+            results["steps"]["analyze_molecules"] = {
+                "ok": False,
+                "errors": [msg],
+                "analysis_source": source,
+                "from_fresh_reinvent": False,
+                "run_type": _run_type(results),
+            }
+            return
+        analysis_cfg = self.agent_config.get("analysis") or {}
+        raw_thr = analysis_cfg.get("qed_pass_threshold", 0.5)
+        qed_pass_threshold = 0.5 if raw_thr is None else float(raw_thr)
+        analysis = analyze_molecules(
+            molecule_path, qed_pass_threshold=qed_pass_threshold
+        )
+        analysis["analysis_source"] = source
+        analysis["from_fresh_reinvent"] = source == "fresh_run"
+        analysis["run_type"] = _run_type(results)
+        details = _validation_details(results)
+        artefact = details.get("resolved_output_model")
+        inventory = results.get("steps", {}).get("find_output") or {}
+        model_files = inventory.get("model_files") or []
+        if artefact:
+            analysis["artefact_kind"] = "model"
+            analysis["artefact_path"] = artefact
+        elif model_files:
+            analysis["artefact_kind"] = "model"
+            analysis["artefact_path"] = model_files[-1]
+        results["steps"]["analyze_molecules"] = analysis
+        results["warnings"].extend(analysis.get("warnings") or [])
+        if not analysis.get("ok"):
+            results["errors"].extend(analysis.get("errors") or [])
+
     @staticmethod
     def _analysis_source(results: dict[str, Any], plan: dict[str, Any]) -> str:
-        """Label whether molecule stats came from a fresh REINVENT run or an existing CSV."""
+        """Label whether molecule stats came from sampling, TL training, or a stale CSV."""
+        if _run_type(results) == "transfer_learning":
+            return "tl_training_set"
         run = results.get("steps", {}).get("run_reinvent") or {}
         if run.get("success") and not run.get("skipped"):
             return "fresh_run"
-        # Dry-run (no --approve-run), offline --skip-reinvent, or failed/aborted run
-        # all analyze whatever CSV is already on disk.
         return "existing_csv"
+
+    def _resolve_molecule_file(
+        self,
+        results: dict[str, Any],
+        *,
+        csv_override: str | Path | None,
+        config_path: Path,
+        project_dir: Path,
+        output_dir: Path | None = None,
+    ) -> Path | None:
+        if _run_type(results) == "transfer_learning" and csv_override is None:
+            details = _validation_details(results)
+            smiles_path = details.get("smiles_path")
+            if smiles_path and Path(smiles_path).is_file():
+                return Path(smiles_path)
+        return self._resolve_csv(
+            results,
+            csv_override=csv_override,
+            config_path=config_path,
+            project_dir=project_dir,
+            output_dir=output_dir,
+        )
 
     @staticmethod
     def _resolve_csv(
@@ -239,6 +305,16 @@ class ExecutionAgent:
         if resolved and Path(resolved).is_file():
             return Path(resolved)
         return None
+
+
+def _run_type(results: dict[str, Any]) -> str:
+    return str(_validation_details(results).get("run_type") or "").strip().lower()
+
+
+def _validation_details(results: dict[str, Any]) -> dict[str, Any]:
+    validation = results.get("steps", {}).get("validate_project") or {}
+    details = validation.get("details") or {}
+    return details if isinstance(details, dict) else {}
 
 
 def _planned_csv_path(plan: dict[str, Any]) -> str | None:

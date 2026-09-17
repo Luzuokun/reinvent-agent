@@ -20,6 +20,9 @@ projects/**/priors/*.prior
 projects/**/priors/*.chkpt
 projects/**/priors/*.model
 !projects/**/priors/.gitkeep
+projects/**/models/*
+!projects/**/models/.gitkeep
+projects/**/tb_TL*
 
 # Runtime artefacts
 logs/*.log

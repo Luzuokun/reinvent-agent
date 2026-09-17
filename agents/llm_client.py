@@ -13,9 +13,23 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# httpx / httpx2 Proxy() accepts these schemes. Clash-style ALL_PROXY=socks://
+# is not among them and crashes OpenAI() before any request is sent.
+_HTTPX_PROXY_SCHEMES = frozenset({"http", "https", "socks5", "socks5h"})
+_PROXY_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+)
+HttpClientFactory = Callable[..., Any]
 
 SUPPORTED_PROVIDERS = ("openai", "xai", "gemini", "openai_compatible")
 
@@ -195,15 +209,104 @@ def read_api_key(
     raise LLMClientError(f"Missing API key: set environment variable {listed}")
 
 
+def proxy_url_scheme(url: str) -> str:
+    """Return the lowercase URL scheme, or empty string if missing."""
+    return (urlparse(str(url).strip()).scheme or "").lower()
+
+
+def redact_proxy_url(url: str) -> str:
+    """Scheme + host[:port] only — never userinfo."""
+    parsed = urlparse(str(url).strip())
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    scheme = parsed.scheme or "proxy"
+    return f"{scheme}://{host}" if host else scheme
+
+
+def select_http_proxy(environ: Mapping[str, str] | None = None) -> str | None:
+    """Pick an httpx-compatible proxy URL from the environment.
+
+    Prefer ``HTTP(S)_PROXY``. Skip Clash-style ``socks://`` (not a valid
+    httpx scheme). Rewrite ``socks://`` to ``socks5://`` only when no HTTP
+    proxy is set.
+    """
+    env = os.environ if environ is None else environ
+    socks_fallback: str | None = None
+    for key in _PROXY_ENV_KEYS:
+        raw = env.get(key)
+        if not raw or not str(raw).strip():
+            continue
+        url = str(raw).strip()
+        scheme = proxy_url_scheme(url)
+        if scheme in _HTTPX_PROXY_SCHEMES:
+            return url
+        if scheme == "socks" and socks_fallback is None:
+            rest = url.split("://", 1)[1] if "://" in url else url
+            socks_fallback = f"socks5://{rest}"
+    return socks_fallback
+
+
+def has_unsupported_proxy_scheme(environ: Mapping[str, str] | None = None) -> bool:
+    """True if any proxy env var uses a scheme httpx will reject at init."""
+    env = os.environ if environ is None else environ
+    for key in _PROXY_ENV_KEYS:
+        raw = env.get(key)
+        if not raw or not str(raw).strip():
+            continue
+        scheme = proxy_url_scheme(raw)
+        if scheme and scheme not in _HTTPX_PROXY_SCHEMES:
+            return True
+    return False
+
+
+def _is_unsupported_proxy_error(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "proxy url" in text and (
+        "unknown scheme" in text or "unsupported" in text
+    )
+
+
+def _default_http_client_factory(*, proxy: str | None = None) -> Any:
+    """SDK HTTP client that does not read ``ALL_PROXY`` from the environment."""
+    kwargs: dict[str, Any] = {"trust_env": False, "follow_redirects": True}
+    client_cls: Any | None = None
+    try:
+        from openai import DefaultHttpxClient as client_cls
+    except ImportError:
+        client_cls = None
+    if client_cls is None:
+        for name in ("httpx2", "httpx"):
+            try:
+                client_cls = __import__(name).Client
+                break
+            except ImportError:
+                continue
+    if client_cls is None:
+        raise LLMClientError(
+            "Cannot build an HTTP client that ignores unsupported ALL_PROXY. "
+            "Unset ALL_PROXY/all_proxy, or set HTTPS_PROXY to an http(s) URL."
+        )
+    if proxy:
+        try:
+            return client_cls(proxy=proxy, **kwargs)
+        except TypeError:
+            return client_cls(proxies=proxy, **kwargs)
+    return client_cls(**kwargs)
+
+
 def build_client(
     settings: LLMSettings,
     *,
     openai_cls: Any | None = None,
     environ: Mapping[str, str] | None = None,
+    http_client_factory: HttpClientFactory | None = None,
 ) -> Any:
     """Construct an OpenAI SDK client for the resolved provider.
 
     ``openai_cls`` is a test seam; production uses ``openai.OpenAI``.
+    Clash-style ``ALL_PROXY=socks://...`` is skipped up front (httpx only
+    accepts http/https/socks5/socks5h). ``HTTP(S)_PROXY`` is used instead.
     """
     api_key, source_env = read_api_key(settings, environ=environ)
     cls = openai_cls
@@ -226,7 +329,64 @@ def build_client(
         settings.base_url or "default",
         source_env,
     )
-    return cls(**kwargs)
+    # Real SDK reads process env proxies at init. Test fakes must not get
+    # an injected http_client or exact-kwargs assertions break.
+    if openai_cls is None and has_unsupported_proxy_scheme():
+        return _attach_sanitized_http_client(
+            cls,
+            kwargs,
+            http_client_factory=http_client_factory,
+        )
+    try:
+        return cls(**kwargs)
+    except ValueError as exc:
+        if not _is_unsupported_proxy_error(exc):
+            raise
+        return _attach_sanitized_http_client(
+            cls,
+            kwargs,
+            http_client_factory=http_client_factory,
+            rejected=exc,
+        )
+
+
+def _attach_sanitized_http_client(
+    cls: Any,
+    kwargs: dict[str, Any],
+    *,
+    http_client_factory: HttpClientFactory | None,
+    rejected: BaseException | None = None,
+) -> Any:
+    factory = http_client_factory or _default_http_client_factory
+    proxy = select_http_proxy()
+    proxy_note = redact_proxy_url(proxy) if proxy else "direct (no proxy)"
+    if rejected is None:
+        logger.info(
+            "LLM HTTP client using %s (skipped unsupported ALL_PROXY scheme)",
+            proxy_note,
+        )
+    else:
+        logger.warning(
+            "LLM HTTP client rejected proxy URL (%s) — retrying with %s",
+            rejected,
+            proxy_note,
+        )
+    try:
+        http_client = factory(proxy=proxy)
+        return cls(**kwargs, http_client=http_client)
+    except Exception as retry_exc:  # noqa: BLE001
+        if proxy is None:
+            raise LLMClientError(
+                f"LLM HTTP client failed after ignoring unsupported ALL_PROXY: {retry_exc}"
+            ) from retry_exc
+        logger.warning(
+            "Proxy %s failed (%s: %s) — retrying with direct connection",
+            redact_proxy_url(proxy),
+            type(retry_exc).__name__,
+            retry_exc,
+        )
+        http_client = factory(proxy=None)
+        return cls(**kwargs, http_client=http_client)
 
 
 def complete_structured(

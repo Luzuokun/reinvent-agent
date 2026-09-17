@@ -138,6 +138,9 @@ def build_evidence_summary(
         "validation": {
             "ok": validation.get("ok"),
             "errors": _truncate_str_list(validation.get("errors")),
+            "run_type": (validation.get("details") or {}).get("run_type")
+            if isinstance(validation.get("details"), dict)
+            else None,
         },
         "run_reinvent": {
             "skipped": run.get("skipped"),
@@ -150,12 +153,16 @@ def build_evidence_summary(
         "inventory": {
             "ok": inventory.get("ok"),
             "csv_count": inventory.get("csv_count"),
+            "model_count": inventory.get("model_count"),
         },
         "analysis": {
             "ok": analysis.get("ok"),
             "csv_path": analysis.get("csv_path"),
             "analysis_source": analysis.get("analysis_source"),
             "from_fresh_reinvent": analysis.get("from_fresh_reinvent"),
+            "run_type": analysis.get("run_type"),
+            "artefact_kind": analysis.get("artefact_kind"),
+            "artefact_path": analysis.get("artefact_path"),
             "total_molecules": analysis.get("total_molecules"),
             "unique_molecules": analysis.get("unique_molecules"),
             "duplicate_molecules": analysis.get("duplicate_molecules"),
@@ -170,9 +177,14 @@ def build_evidence_summary(
                 "mw": _stat_block(rdkit.get("mw")),
                 "logp": _stat_block(rdkit.get("logp")),
                 "qed": _stat_block(rdkit.get("qed")),
+                "tpsa": _stat_block(rdkit.get("tpsa")),
+                "hbd": _stat_block(rdkit.get("hbd")),
+                "hba": _stat_block(rdkit.get("hba")),
+                "rotatable_bonds": _stat_block(rdkit.get("rotatable_bonds")),
                 "sa_score": _stat_block(rdkit.get("sa_score")),
                 "pains": _pains_block(rdkit.get("pains")),
                 "filters": _filters_block(rdkit.get("filters")),
+                "lipinski": _lipinski_block(rdkit.get("lipinski")),
             },
         },
         "thresholds": dict(thresholds or {}),
@@ -337,4 +349,15 @@ def _filters_block(value: Any) -> dict[str, Any] | None:
         "qed_pass_count": value.get("qed_pass_count"),
         "pains_free_count": value.get("pains_free_count"),
         "qed_pass_and_pains_free_count": value.get("qed_pass_and_pains_free_count"),
+    }
+
+
+def _lipinski_block(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "rules": value.get("rules"),
+        "pass": value.get("pass"),
+        "fail": value.get("fail"),
+        "fraction": value.get("fraction"),
     }

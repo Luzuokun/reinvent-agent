@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +37,26 @@ def dumps_pretty(obj: Any) -> str:
     return json.dumps(to_jsonable(obj), indent=2, ensure_ascii=False)
 
 
-def resolve_under_root(root: Path, *parts: str | Path) -> Path:
-    """Resolve a path and ensure it stays under ``root``."""
+def resolve_under_root(
+    root: Path,
+    *parts: str | Path,
+    follow_symlinks: bool = True,
+) -> Path:
+    """Resolve a path and ensure the declared location stays under ``root``.
+
+    Output paths should keep ``follow_symlinks=True`` so a symlink cannot
+    redirect writes outside the project. Input paths (priors, training
+    SMILES) may use ``follow_symlinks=False`` so a project-local symlink
+    can point at a shared prior.
+    """
     root = root.resolve()
-    candidate = (root / Path(*parts)).resolve() if parts else root
+    if not parts:
+        return root
+    joined = root / Path(*parts)
+    if follow_symlinks:
+        candidate = joined.resolve()
+    else:
+        candidate = Path(os.path.normpath(str(joined)))
     try:
         candidate.relative_to(root)
     except ValueError as exc:

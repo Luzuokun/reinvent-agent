@@ -75,6 +75,10 @@ def _descriptor_table(rdkit: dict[str, Any]) -> str:
         ("MW", rdkit.get("mw") or {}),
         ("logP", rdkit.get("logp") or {}),
         ("QED", rdkit.get("qed") or {}),
+        ("TPSA", rdkit.get("tpsa") or {}),
+        ("HBD", rdkit.get("hbd") or {}),
+        ("HBA", rdkit.get("hba") or {}),
+        ("Rotatable bonds", rdkit.get("rotatable_bonds") or {}),
         ("SA Score", rdkit.get("sa_score") or {}),
     ]
     body = []
@@ -203,12 +207,16 @@ def _render_analysis(analysis: dict[str, Any]) -> str:
     pains = rdkit.get("pains") if isinstance(rdkit.get("pains"), dict) else {}
     filters = rdkit.get("filters") if isinstance(rdkit.get("filters"), dict) else {}
     histograms = rdkit.get("histograms") if isinstance(rdkit.get("histograms"), dict) else {}
+    lipinski = rdkit.get("lipinski") if isinstance(rdkit.get("lipinski"), dict) else {}
 
     summary = _kv_table(
         {
             "csv_path": analysis.get("csv_path"),
             "analysis_source": analysis.get("analysis_source"),
             "from_fresh_reinvent": analysis.get("from_fresh_reinvent"),
+            "run_type": analysis.get("run_type"),
+            "artefact_kind": analysis.get("artefact_kind"),
+            "artefact_path": analysis.get("artefact_path"),
             "smiles_column": analysis.get("smiles_column"),
             "total_molecules": analysis.get("total_molecules"),
             "unique_molecules": analysis.get("unique_molecules"),
@@ -231,6 +239,10 @@ def _render_analysis(analysis: dict[str, Any]) -> str:
         "molecules with QED ≥ threshold": filters.get("qed_pass_count"),
         "PAINS-free molecules": filters.get("pains_free_count"),
         "QED ≥ threshold and PAINS-free": filters.get("qed_pass_and_pains_free_count"),
+        "Lipinski rules": lipinski.get("rules"),
+        "Lipinski pass": lipinski.get("pass"),
+        "Lipinski fail": lipinski.get("fail"),
+        "Lipinski pass fraction": lipinski.get("fraction"),
     }
 
     charts = (
@@ -305,7 +317,19 @@ def _render_html(payload: dict[str, Any]) -> str:
     csv_path = (analysis or {}).get("csv_path") if isinstance(analysis, dict) else None
 
     banner = ""
-    if dry_run or analysis_source == "existing_csv":
+    if analysis_source == "tl_training_set":
+        csv_note = _esc(csv_path) if csv_path else "(path unavailable)"
+        artefact = (analysis or {}).get("artefact_path") if isinstance(analysis, dict) else None
+        artefact_note = f" Model artefact: {_esc(artefact)}." if artefact else ""
+        banner_text = (
+            "Transfer learning: molecule stats below are from the training SMILES "
+            f"({csv_note}), not a fresh sample from the new model.{artefact_note}"
+        )
+        banner = (
+            f"<div class='banner warn-banner' role='status'>"
+            f"<strong>Notice:</strong> {banner_text}</div>"
+        )
+    elif dry_run or analysis_source == "existing_csv":
         csv_note = _esc(csv_path) if csv_path else "(path unavailable)"
         if dry_run:
             banner_text = (

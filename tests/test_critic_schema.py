@@ -112,7 +112,17 @@ def test_build_evidence_summary_omits_smiles_and_html():
                 "total_molecules": 2,
                 "smiles": ["CCO", "c1ccccc1"],
                 "html": "<html>secret</html>",
-                "rdkit": {"available": True, "valid_fraction": 1.0, "qed": {"mean": 0.5, "n": 2}},
+                "rdkit": {
+                    "available": True,
+                    "valid_fraction": 1.0,
+                    "qed": {"mean": 0.5, "n": 2},
+                    "lipinski": {
+                        "rules": "MW<=500, LogP<=5, HBD<=5, HBA<=10",
+                        "pass": 2,
+                        "fail": 0,
+                        "fraction": 1.0,
+                    },
+                },
             }
         },
         "errors": [],
@@ -125,4 +135,5 @@ def test_build_evidence_summary_omits_smiles_and_html():
     assert "<html>" not in blob
     assert evidence["analysis"]["total_molecules"] == 2
     assert evidence["analysis"]["rdkit"]["qed"]["mean"] == 0.5
+    assert evidence["analysis"]["rdkit"]["lipinski"]["fraction"] == 1.0
     assert evidence["thresholds"]["min_molecules"] == 1

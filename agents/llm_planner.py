@@ -69,6 +69,7 @@ Rules:
 - Prefer the standard full pipeline unless skip_reinvent is true or the goal is offline analysis.
 - If skip_reinvent is true, omit run_reinvent and prepare_execution.
 - run_reinvent has no parameters. The runtime uses the project's reinvent.toml and still requires --approve-run.
+- If the project is transfer_learning, molecule analysis is the training SMILES file, not a fresh generation. Do not treat training molecules as sampled output.
 - Do not include any other keys.
 """
 

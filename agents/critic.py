@@ -30,6 +30,9 @@ class CriticAgent:
         analysis = steps.get("analyze_molecules") or {}
         inventory = steps.get("find_output") or {}
         validation = steps.get("validate_project") or {}
+        details = validation.get("details") if isinstance(validation.get("details"), dict) else {}
+        run_type = str(details.get("run_type") or "").strip().lower()
+        is_tl = run_type == "transfer_learning"
 
         # Hard failures
         if results.get("aborted") and not plan.get("skip_reinvent"):
@@ -61,7 +64,18 @@ class CriticAgent:
                 f"Too few molecules detected ({total} < {self.min_molecules})"
             )
 
-        if inventory.get("ok") and inventory.get("csv_count", 0) == 0 and not analysis.get("ok"):
+        model_count = int(inventory.get("model_count") or 0)
+        csv_count = int(inventory.get("csv_count") or 0)
+        if is_tl:
+            if (
+                plan.get("approve_run")
+                and not plan.get("skip_reinvent")
+                and run.get("success")
+                and model_count == 0
+            ):
+                status = "FAIL"
+                issues.append("Transfer learning produced no model checkpoint")
+        elif inventory.get("ok") and csv_count == 0 and not analysis.get("ok"):
             status = "FAIL"
             issues.append("No CSV output files found")
 
@@ -112,6 +126,18 @@ class CriticAgent:
                 status = "WARNING"
             issues.append(
                 "Dry-run only: REINVENT was not executed (pass --approve-run to run)"
+            )
+
+        if is_tl and analysis.get("ok") and analysis.get("analysis_source") == "tl_training_set":
+            successful_tl = bool(
+                plan.get("approve_run")
+                and not plan.get("skip_reinvent")
+                and run.get("success")
+            )
+            if not successful_tl and status == "PASS":
+                status = "WARNING"
+            issues.append(
+                "Molecule stats are from the TL training SMILES, not molecules sampled from the new model"
             )
 
         recommendation = {

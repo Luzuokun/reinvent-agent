@@ -1,0 +1,27 @@
+# Demo transfer learning — CPU, tiny bundled SMILES (not ChEMBL).
+# Prior is gitignored: symlink the same reinvent.prior used by demo_project.
+
+run_type = "transfer_learning"
+device = "cpu"
+tb_logdir = "tb_TL_demo"
+json_out_config = "output/json_transfer_learning_demo.json"
+
+[parameters]
+num_epochs = 1
+save_every_n_epochs = 1
+batch_size = 10
+num_refs = 0
+# REINVENT4 requires sample_batch_size >= 100 (validation stats, not training size).
+sample_batch_size = 100
+tb_isim = false
+
+input_model_file = "priors/reinvent.prior"
+smiles_file = "input/tl_train.smi"
+output_model_file = "models/demo_tl.model"
+validation_smiles_file = "input/tl_train.smi"
+
+pairs.type = "tanimoto"
+pairs.upper_threshold = 1.0
+pairs.lower_threshold = 0.7
+pairs.min_cardinality = 1
+pairs.max_cardinality = 199

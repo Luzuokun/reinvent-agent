@@ -12,6 +12,7 @@ import pandas as pd
 SMILES_CANDIDATES = ("SMILES", "smiles", "Smiles", "canonical_smiles", "CANONICAL_SMILES")
 DEFAULT_QED_PASS_THRESHOLD = 0.5
 HISTOGRAM_BINS = 10
+LIPINSKI_RULES = "MW<=500, LogP<=5, HBD<=5, HBA<=10"
 
 
 def _detect_smiles_column(columns: list[str]) -> str | None:
@@ -25,6 +26,24 @@ def _detect_smiles_column(columns: list[str]) -> str | None:
         if "smiles" in col.lower():
             return col
     return None
+
+
+def _load_smiles_frame(path: Path) -> tuple[Any, str | None]:
+    """Load a CSV or whitespace ``.smi`` into a DataFrame plus SMILES column name."""
+    suffix = path.suffix.lower()
+    if suffix in {".smi", ".smiles"}:
+        rows: list[str] = []
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            text = raw.strip()
+            if not text or text.startswith("#"):
+                continue
+            token = text.split()[0].strip()
+            if token:
+                rows.append(token)
+        df = pd.DataFrame({"SMILES": rows})
+        return df, "SMILES"
+    df = pd.read_csv(path)
+    return df, _detect_smiles_column(list(df.columns))
 
 
 def _mean(values: list[float]) -> float | None:
@@ -152,12 +171,22 @@ def _empty_rdkit_block(
         "mw": dict(empty_stats),
         "logp": dict(empty_stats),
         "qed": dict(empty_stats),
+        "tpsa": dict(empty_stats),
+        "hbd": dict(empty_stats),
+        "hba": dict(empty_stats),
+        "rotatable_bonds": dict(empty_stats),
         "sa_score": {**empty_stats, "available": False},
         "pains": {
             "available": False,
             "molecules_with_hits": None,
             "total_hits": None,
             "hit_fraction": None,
+        },
+        "lipinski": {
+            "rules": LIPINSKI_RULES,
+            "pass": None,
+            "fail": None,
+            "fraction": None,
         },
         "filters": {
             "qed_pass_threshold": qed_pass_threshold,
@@ -179,7 +208,7 @@ def analyze_molecules(
     max_rows: int | None = None,
     qed_pass_threshold: float = DEFAULT_QED_PASS_THRESHOLD,
 ) -> dict[str, Any]:
-    """Analyze a REINVENT (or similar) molecule CSV.
+    """Analyze a REINVENT (or similar) molecule CSV or training ``.smi``.
 
     If RDKit is unavailable, returns counts/duplicates and a warning without
     crashing the caller. SA Score / PAINS / histograms are omitted (nulls),
@@ -199,28 +228,27 @@ def analyze_molecules(
         }
 
     try:
-        df = pd.read_csv(csv_path)
+        df, smiles_col = _load_smiles_frame(csv_path)
     except Exception as exc:  # noqa: BLE001
         return {
             "ok": False,
             "csv_path": str(csv_path),
-            "errors": [f"Failed to read CSV: {exc}"],
+            "errors": [f"Failed to read molecule file: {exc}"],
+            "warnings": warnings,
+        }
+
+    if smiles_col is None:
+        return {
+            "ok": False,
+            "csv_path": str(csv_path),
+            "columns": list(df.columns) if df is not None else [],
+            "errors": ["Could not detect a SMILES column"],
             "warnings": warnings,
         }
 
     if max_rows is not None and len(df) > max_rows:
         df = df.head(max_rows)
         warnings.append(f"Truncated analysis to first {max_rows} rows")
-
-    smiles_col = _detect_smiles_column(list(df.columns))
-    if smiles_col is None:
-        return {
-            "ok": False,
-            "csv_path": str(csv_path),
-            "columns": list(df.columns),
-            "errors": ["Could not detect a SMILES column"],
-            "warnings": warnings,
-        }
 
     smiles_series = df[smiles_col].astype(str).fillna("")
     smiles_list = [s.strip() for s in smiles_series.tolist() if s.strip()]
@@ -249,6 +277,12 @@ def analyze_molecules(
     mw_vals: list[float] = []
     logp_vals: list[float] = []
     qed_vals: list[float] = []
+    tpsa_vals: list[float] = []
+    hbd_vals: list[float] = []
+    hba_vals: list[float] = []
+    rotb_vals: list[float] = []
+    lipinski_pass = 0
+    lipinski_fail = 0
     sa_vals: list[float] = []
     sa_available = False
     pains_available = False
@@ -292,12 +326,27 @@ def analyze_molecules(
             valid += 1
             qed: float | None = None
             try:
-                mw_vals.append(float(Descriptors.MolWt(mol)))
-                logp_vals.append(float(Descriptors.MolLogP(mol)))
+                mw = float(Descriptors.MolWt(mol))
+                logp = float(Descriptors.MolLogP(mol))
                 qed = float(QED.qed(mol))
-                qed_vals.append(qed)
+                tpsa = float(Descriptors.TPSA(mol))
+                hbd = float(Descriptors.NumHDonors(mol))
+                hba = float(Descriptors.NumHAcceptors(mol))
+                rotb = float(Descriptors.NumRotatableBonds(mol))
             except Exception:  # noqa: BLE001
                 descriptor_failed = True
+            else:
+                mw_vals.append(mw)
+                logp_vals.append(logp)
+                qed_vals.append(qed)
+                tpsa_vals.append(tpsa)
+                hbd_vals.append(hbd)
+                hba_vals.append(hba)
+                rotb_vals.append(rotb)
+                if mw <= 500 and logp <= 5 and hbd <= 5 and hba <= 10:
+                    lipinski_pass += 1
+                else:
+                    lipinski_fail += 1
 
             if sa_fn is not None:
                 try:
@@ -351,6 +400,7 @@ def analyze_molecules(
                 _round(pains_mols / valid) if pains_available and valid else None
             ),
         }
+        scored_lipinski = lipinski_pass + lipinski_fail
         filters_block = {
             "qed_pass_threshold": qed_pass_threshold,
             "qed_pass_count": qed_pass if scored_for_filters else None,
@@ -368,8 +418,20 @@ def analyze_molecules(
             "mw": _stat_dict(mw_vals),
             "logp": _stat_dict(logp_vals),
             "qed": _stat_dict(qed_vals),
+            "tpsa": _stat_dict(tpsa_vals),
+            "hbd": _stat_dict(hbd_vals),
+            "hba": _stat_dict(hba_vals),
+            "rotatable_bonds": _stat_dict(rotb_vals),
             "sa_score": sa_stats,
             "pains": pains_block,
+            "lipinski": {
+                "rules": LIPINSKI_RULES,
+                "pass": lipinski_pass,
+                "fail": lipinski_fail,
+                "fraction": (
+                    round(lipinski_pass / scored_lipinski, 4) if scored_lipinski else None
+                ),
+            },
             "filters": filters_block,
             "histograms": {
                 "qed": _histogram(qed_vals, range_min=0.0, range_max=1.0),

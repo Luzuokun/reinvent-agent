@@ -12,9 +12,12 @@ from agents.llm_client import (
     XAI_DEFAULT_MODEL,
     LLMClientError,
     build_client,
+    has_unsupported_proxy_scheme,
     overlay_provider,
     read_api_key,
+    redact_proxy_url,
     resolve_llm_settings,
+    select_http_proxy,
 )
 from main import build_parser
 from tools import load_agent_config
@@ -215,3 +218,68 @@ def test_overlay_default_yaml_to_xai_uses_xai_preset():
     assert critic.provider == "xai"
     assert critic.api_key_env == "XAI_API_KEY"
     assert critic.model == XAI_DEFAULT_MODEL
+
+
+def test_has_unsupported_proxy_scheme_detects_socks_all_proxy():
+    assert has_unsupported_proxy_scheme(
+        {
+            "ALL_PROXY": "socks://192.168.1.102:10793/",
+            "HTTPS_PROXY": "http://192.168.1.103:10793/",
+        }
+    )
+    assert not has_unsupported_proxy_scheme(
+        {"HTTPS_PROXY": "http://192.168.1.103:10793/"}
+    )
+
+
+def test_select_http_proxy_prefers_https_over_socks_all_proxy():
+    env = {
+        "ALL_PROXY": "socks://192.168.1.102:10793/",
+        "all_proxy": "socks://192.168.1.102:10793/",
+        "HTTPS_PROXY": "http://192.168.1.103:10793/",
+        "HTTP_PROXY": "http://192.168.1.103:10793/",
+    }
+    assert select_http_proxy(env) == "http://192.168.1.103:10793/"
+
+
+def test_select_http_proxy_rewrites_socks_all_proxy_when_no_http_proxy():
+    env = {"ALL_PROXY": "socks://192.168.1.102:10793/"}
+    assert select_http_proxy(env) == "socks5://192.168.1.102:10793/"
+
+
+def test_select_http_proxy_keeps_socks5():
+    assert select_http_proxy({"ALL_PROXY": "socks5://127.0.0.1:1080"}) == "socks5://127.0.0.1:1080"
+
+
+def test_redact_proxy_url_drops_userinfo():
+    assert redact_proxy_url("http://user:secret@192.168.1.103:10793/") == "http://192.168.1.103:10793"
+
+
+def test_build_client_retries_when_socks_all_proxy_rejected(monkeypatch):
+    monkeypatch.setenv("XAI_API_KEY", "xai-test")
+    monkeypatch.setenv("ALL_PROXY", "socks://192.168.1.102:10793/")
+    monkeypatch.setenv("HTTPS_PROXY", "http://192.168.1.103:10793/")
+    sentinel = object()
+    factories: list[str | None] = []
+
+    class _BoomThenOk:
+        def __init__(self, **kwargs):
+            if "http_client" not in kwargs:
+                raise ValueError(
+                    "Unknown scheme for proxy URL URL('socks://192.168.1.102:10793/')"
+                )
+            self.kwargs = kwargs
+
+    def factory(*, proxy=None):
+        factories.append(proxy)
+        return sentinel
+
+    settings = resolve_llm_settings({"provider": "xai"})
+    client = build_client(
+        settings,
+        openai_cls=_BoomThenOk,
+        http_client_factory=factory,
+    )
+    assert client.kwargs["http_client"] is sentinel
+    assert client.kwargs["base_url"] == XAI_DEFAULT_BASE_URL
+    assert factories == ["http://192.168.1.103:10793/"]

@@ -15,6 +15,7 @@ from agents.llm_planner import LLMPlannerAgent, LLMPlannerError
 from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
 from tools.artifacts import create_run_dir, write_run_result
+from tools.envfile import load_repo_dotenv
 from tools.reinvent import confirm_reinvent_launch, prepare_reinvent_command
 
 
@@ -136,6 +137,12 @@ def main(argv: list[str] | None = None) -> int:
     logs_dir = REPO_ROOT / logs_dirname
     log_path = _configure_logging(logs_dir)
     logger = logging.getLogger("main")
+    loaded_env = load_repo_dotenv()
+    if loaded_env:
+        logger.info(
+            "Loaded %s variable(s) from .env (existing environment values were kept)",
+            len(loaded_env),
+        )
     run_dir = create_run_dir(logs_dir)
 
     project_dir = Path(args.project)
@@ -229,7 +236,17 @@ def main(argv: list[str] | None = None) -> int:
         print("\n[Molecule Analysis]")
         source = analysis.get("analysis_source")
         csv_path = analysis.get("csv_path")
-        if source == "existing_csv" or (run and run.get("skipped")):
+        if source == "tl_training_set":
+            print(
+                "Source:   TL training SMILES "
+                "(not molecules sampled from the new model)"
+            )
+            if csv_path:
+                print(f"File:     {csv_path}")
+            artefact = analysis.get("artefact_path")
+            if artefact:
+                print(f"Model:    {artefact}")
+        elif source == "existing_csv" or (run and run.get("skipped")):
             print(
                 "Source:   existing CSV "
                 "(REINVENT was not executed — not a fresh generation)"
@@ -255,6 +272,9 @@ def main(argv: list[str] | None = None) -> int:
                 sa = (rdkit.get("sa_score") or {}).get("mean")
                 if sa is not None:
                     print(f"Mean SA:  {sa}")
+                tpsa = (rdkit.get("tpsa") or {}).get("mean")
+                if tpsa is not None:
+                    print(f"Mean TPSA: {tpsa}")
                 pains = rdkit.get("pains") or {}
                 if pains.get("available") and pains.get("molecules_with_hits") is not None:
                     print(f"PAINS:    {pains.get('molecules_with_hits')} molecules")
@@ -263,6 +283,12 @@ def main(argv: list[str] | None = None) -> int:
                 if qed_pass is not None:
                     thr = filters.get("qed_pass_threshold")
                     print(f"QED≥{thr}:  {qed_pass}")
+                lipinski = rdkit.get("lipinski") or {}
+                passed = lipinski.get("pass")
+                failed = lipinski.get("fail")
+                frac = lipinski.get("fraction")
+                if frac is not None and passed is not None and failed is not None:
+                    print(f"Lipinski: {passed}/{passed + failed} pass ({frac})")
         else:
             print("Analysis failed:")
             for err in analysis.get("errors") or []:

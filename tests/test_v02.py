@@ -124,6 +124,8 @@ def test_html_report_dry_run_banner(tmp_path: Path):
     assert "Dry-run: REINVENT was not executed" in html
     assert "existing output file" in html
     assert "sampled.csv" in html
+    assert "Descriptors" in html
+    assert "PAINS and simple filters" in html
 
 
 def test_executor_marks_existing_csv_on_dry_run():
