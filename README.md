@@ -3,11 +3,13 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.6 scope:** same pipeline as v0.5, plus an optional **stdio MCP server**
-that wraps the existing allowlisted tools (`check_environment`,
-`analyze_molecules`, …). MCP is a new entry point for Cursor and other
-clients; it does not add shell, docking, MD, or TOML editing. Deterministic
-planning and critic remain the default. See
+**v0.7 scope:** same pipeline as v0.6, plus **human-written experiment presets**.
+The planner may name a preset ID (`sampling-cpu-100`, `sampling-cpu-1000`,
+`sampling-cpu-scaffold`); it cannot generate TOML. Launch still requires
+`--approve-run`. See [docs/experiment-presets.md](docs/experiment-presets.md).
+v0.6 added an optional **stdio MCP server** wrapping the existing allowlisted
+tools. MCP is unchanged here (CLI / planner first). Deterministic planning and
+critic remain the default. See
 [docs/mcp-tools.md](docs/mcp-tools.md),
 [docs/csv-analysis-report.md](docs/csv-analysis-report.md),
 [docs/phase2-llm-planner.md](docs/phase2-llm-planner.md) and
@@ -15,9 +17,9 @@ planning and critic remain the default. See
 Project intent and stage notes: [AI_CONTEXT.md](AI_CONTEXT.md).
 
 No LLM tool-calling. The planner may only return a JSON plan of allowlisted step
-names. The critic may only return `PASS`/`WARNING`/`FAIL` JSON from structured
-evidence. Agents never execute arbitrary shell; they only call predefined tools.
-The MCP server advertises those same tools only.
+names plus an optional preset ID. The critic may only return `PASS`/`WARNING`/`FAIL`
+JSON from structured evidence. Agents never execute arbitrary shell; they only
+call predefined tools. The MCP server advertises those same tools only.
 
 ## Requirements
 
@@ -183,6 +185,30 @@ python main.py \
   --approve-run --yes
 ```
 
+### Experiment presets
+
+Human-written TOML lives in `experiments/`. The planner/LLM may only name an ID;
+it cannot write config text. `--preset` is the human override. Launch still
+needs `--approve-run`. Details: [docs/experiment-presets.md](docs/experiment-presets.md).
+
+```bash
+python main.py \
+  --project projects/demo_project \
+  --goal "Generate 1000 molecules." \
+  --preset sampling-cpu-1000 \
+  --approve-run --yes
+
+python main.py \
+  --project projects/demo_project \
+  --goal "Generate from this scaffold and report QED." \
+  --preset sampling-cpu-scaffold \
+  --scaffold projects/demo_project/input/scaffold.smi \
+  --approve-run --yes
+```
+
+Illegal preset IDs are rejected by argparse / schema. Out-of-sandbox scaffold
+paths are schema-rejected; the LLM planner falls back to the deterministic plan.
+
 ### MCP server (optional)
 
 Same eight allowlisted tools as the planner, over stdio. No shell tool.
@@ -309,6 +335,7 @@ Run from the repo root with `conda activate reinvent4`.
 7. Every action is logged under `logs/` (including per-run `result.json`).
 8. Optional LLM critic is evidence-only: no tools, no shell, no invented docking/MD/literature.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
+10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
 
 ## Relation to other projects
 
@@ -324,8 +351,9 @@ Run from the repo root with `conda activate reinvent4`.
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
 tools/           Validated environment / reinvent / files / smiles_prep / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
+experiments/     Human-written REINVENT presets (IDs only; never model-authored)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
-docs/            Phase design notes (mcp-tools.md, csv-analysis-report.md, phase2-llm-planner.md, phase3-llm-critic.md)
+docs/            Phase design notes (experiment-presets.md, mcp-tools.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

@@ -9,9 +9,15 @@ from pathlib import Path
 
 from agents.critic import CriticAgent
 from agents.executor import ExecutionAgent
+from agents.experiment_presets import (
+    ALLOWED_PRESET_IDS,
+    PresetError,
+    materialize_preset,
+)
 from agents.llm_client import SUPPORTED_PROVIDERS, overlay_provider
 from agents.llm_critic import LLMCriticAgent, LLMCriticError
 from agents.llm_planner import LLMPlannerAgent, LLMPlannerError
+from agents.plan_schema import PlanValidationError
 from agents.planner import PlannerAgent
 from tools import REPO_ROOT, dumps_pretty, load_agent_config
 from tools.artifacts import create_run_dir, write_run_result
@@ -124,6 +130,26 @@ def build_parser() -> argparse.ArgumentParser:
             "preset base_url and API key env apply unless yaml overrides them."
         ),
     )
+    parser.add_argument(
+        "--preset",
+        choices=ALLOWED_PRESET_IDS,
+        default=None,
+        help=(
+            "Human-written experiment preset ID "
+            f"({', '.join(ALLOWED_PRESET_IDS)}). "
+            "The planner/LLM may only name one of these IDs; it cannot write TOML. "
+            "Launch still requires --approve-run."
+        ),
+    )
+    parser.add_argument(
+        "--scaffold",
+        default=None,
+        help=(
+            "Existing scaffold SMILES file under <project>/input/ "
+            "(only for --preset sampling-cpu-scaffold, or an LLM plan that "
+            "selects that preset)."
+        ),
+    )
     return parser
 
 
@@ -153,13 +179,47 @@ def main(argv: list[str] | None = None) -> int:
 
     config_name = agent_config.get("project", {}).get("config_name", "reinvent.toml")
     config_path = project_dir / config_name
+    input_dirname = agent_config.get("project", {}).get("input_dirname", "input")
 
     _banner("REINVENT4 AGENT")
     print(f"Project: {project_dir}")
     print(f"Goal:    {args.goal}")
     print(f"Log:     {log_path}")
     print(f"Run dir: {run_dir}")
+    if args.preset:
+        print(f"Preset:  {args.preset}")
+    if args.scaffold:
+        print(f"Scaffold: {args.scaffold}")
 
+    try:
+        plan = _create_plan(
+            args,
+            agent_config,
+            project_dir=str(project_dir),
+            approve_run=bool(args.approve_run),
+        )
+    except (LLMPlannerError, PlanValidationError) as exc:
+        print(f"\nERROR: {exc}")
+        logger.error("Planner failed: %s", exc)
+        return 2
+
+    if plan.get("preset_id"):
+        print(f"Preset:  {plan['preset_id']}")
+        try:
+            materialized = materialize_preset(
+                str(plan["preset_id"]),
+                project_dir=project_dir,
+                scaffold_path=plan.get("scaffold_path") or args.scaffold,
+                input_dir=project_dir / input_dirname,
+            )
+            config_path = Path(materialized["config_path"])
+        except PresetError as exc:
+            print(f"\nERROR: Experiment preset rejected: {exc}")
+            logger.error("Preset materialize failed: %s", exc)
+            return 2
+
+    # Confirm the command that will actually run (preset TOML if selected).
+    # Planning happens first so an LLM-chosen preset_id is in the argv we show.
     approve_run = bool(args.approve_run)
     if approve_run and not args.skip_reinvent:
         prepared = prepare_reinvent_command(
@@ -175,18 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         elif not confirm_reinvent_launch(prepared, assume_yes=args.yes):
             print("Human declined or confirmation unavailable — REINVENT will not run.")
             approve_run = False
-
-    try:
-        plan = _create_plan(
-            args,
-            agent_config,
-            project_dir=str(project_dir),
-            approve_run=approve_run,
-        )
-    except LLMPlannerError as exc:
-        print(f"\nERROR: {exc}")
-        logger.error("LLM planner failed without fallback: %s", exc)
-        return 2
+        plan["approve_run"] = approve_run
 
     print("\n[Planning Agent]")
     planner_name = plan.get("planner") or "deterministic"
@@ -196,6 +245,10 @@ def main(argv: list[str] | None = None) -> int:
         for warning in plan.get("planner_warnings") or []:
             print(f"WARNING: {warning}")
     print(f"Steps: {', '.join(plan['steps'])}")
+    if plan.get("preset_id"):
+        print(f"Preset: {plan['preset_id']}")
+        if plan.get("scaffold_path"):
+            print(f"Scaffold: {plan['scaffold_path']}")
     for note in plan.get("notes") or []:
         print(f"Note:  {note}")
 
@@ -378,6 +431,8 @@ def _create_plan(
         project_dir=project_dir,
         approve_run=approve_run,
         skip_reinvent=args.skip_reinvent,
+        preset_id=getattr(args, "preset", None),
+        scaffold_path=getattr(args, "scaffold", None),
     )
 
 

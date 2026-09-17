@@ -24,7 +24,9 @@ existing tools / analysis / CriticAgent
 ```
 
 The CLI (`main.py` → Planner → Executor → Critic) is unchanged. MCP does not
-replace it and does not introduce CrewAI / LangGraph / Agents SDK.
+replace it and does not introduce CrewAI / LangGraph / Agents SDK. Experiment
+presets (`--preset`) are CLI / planner only; this server does not grow a
+preset tool.
 
 | MCP tool | Existing function | Restrictions (same as CLI / planner) |
 |----------|-------------------|--------------------------------------|

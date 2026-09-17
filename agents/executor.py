@@ -8,6 +8,7 @@ from typing import Any
 
 from analysis.molecule_analysis import analyze_molecules
 from analysis.report import generate_html_report
+from agents.experiment_presets import PresetError, materialize_preset
 from agents.plan_schema import PlanValidationError, resolve_plan_csv_path
 from tools.environment import check_environment
 from tools.files import validate_project
@@ -34,8 +35,34 @@ class ExecutionAgent:
         project_dir = Path(project_dir).expanduser().resolve()
         config_name = self.agent_config.get("project", {}).get("config_name", "reinvent.toml")
         output_dirname = self.agent_config.get("project", {}).get("output_dirname", "output")
+        input_dirname = self.agent_config.get("project", {}).get("input_dirname", "input")
         config_path = project_dir / config_name
         output_dir = project_dir / output_dirname
+        input_dir = project_dir / input_dirname
+
+        preset_meta: dict[str, Any] | None = None
+        preset_id = plan.get("preset_id")
+        if preset_id:
+            try:
+                preset_meta = materialize_preset(
+                    str(preset_id),
+                    project_dir=project_dir,
+                    scaffold_path=plan.get("scaffold_path"),
+                    input_dir=input_dir,
+                )
+                config_path = Path(preset_meta["config_path"])
+            except (PresetError, PlanValidationError) as exc:
+                results_early = {
+                    "plan": plan,
+                    "project_dir": str(project_dir),
+                    "steps": {},
+                    "warnings": [],
+                    "errors": [f"Experiment preset rejected: {exc}"],
+                    "aborted": True,
+                    "abort_reason": "Experiment preset rejected",
+                    "reinvent_config_path": str(config_path),
+                }
+                return results_early
 
         results: dict[str, Any] = {
             "plan": plan,
@@ -43,7 +70,10 @@ class ExecutionAgent:
             "steps": {},
             "warnings": [],
             "errors": [],
+            "reinvent_config_path": str(config_path),
         }
+        if preset_meta:
+            results["preset"] = preset_meta
 
         for raw_step in plan.get("steps", []):
             step = raw_step["name"] if isinstance(raw_step, dict) else raw_step
@@ -61,7 +91,9 @@ class ExecutionAgent:
 
             elif step == "validate_project":
                 validation = validate_project(
-                    project_dir, agent_config=self.agent_config
+                    project_dir,
+                    agent_config=self.agent_config,
+                    config_path=config_path,
                 )
                 results["steps"]["validate_project"] = validation
                 if not validation.get("ok"):
@@ -78,6 +110,8 @@ class ExecutionAgent:
                     "output_dir": str(output_dir),
                     "approve_run": approve_run,
                     "ready": config_path.is_file(),
+                    "preset_id": plan.get("preset_id"),
+                    "scaffold_path": plan.get("scaffold_path"),
                 }
 
             elif step == "run_reinvent":
@@ -155,6 +189,9 @@ class ExecutionAgent:
             "project": {
                 "project_dir": results.get("project_dir"),
                 "plan_steps": (results.get("plan") or {}).get("steps"),
+                "preset_id": (results.get("plan") or {}).get("preset_id"),
+                "scaffold_path": (results.get("plan") or {}).get("scaffold_path"),
+                "reinvent_config": results.get("reinvent_config_path"),
             },
             "environment": results.get("steps", {}).get("check_environment", {}),
             "validation": results.get("steps", {}).get("validate_project", {}),

@@ -1,0 +1,16 @@
+# Human-written preset: sampling-cpu-scaffold
+# CPU sampling that points REINVENT at an already-existing scaffold SMILES file.
+# The only fillable field is smiles_file; the placeholder is replaced with a
+# sandbox-validated relative path. The LLM never writes this TOML.
+# No QED / affinity scoring component — QED is measured in post-run analysis.
+
+run_type = "sampling"
+device = "cpu"
+
+[parameters]
+model_file = "priors/reinvent.prior"
+output_file = "output/sampled.csv"
+num_smiles = 100
+unique_molecules = true
+randomize_smiles = true
+smiles_file = "{{scaffold_path}}"

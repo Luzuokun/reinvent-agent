@@ -14,6 +14,7 @@ def validate_project(
     project_dir: str | Path,
     *,
     config_name: str | None = None,
+    config_path: str | Path | None = None,
     agent_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate a REINVENT project directory without modifying files."""
@@ -38,7 +39,24 @@ def validate_project(
             "details": details,
         }
 
-    config_path = project / config_name
+    if config_path is not None:
+        resolved_config = Path(config_path).expanduser().resolve()
+        try:
+            resolved_config.relative_to(project)
+        except ValueError:
+            errors.append(
+                f"REINVENT config is outside project directory: {resolved_config}"
+            )
+            details["config_path"] = str(resolved_config)
+            return {
+                "ok": False,
+                "errors": errors,
+                "warnings": warnings,
+                "details": details,
+            }
+        config_path = resolved_config
+    else:
+        config_path = project / config_name
     details["config_path"] = str(config_path)
     if not config_path.is_file():
         errors.append(f"REINVENT config missing: {config_path}")

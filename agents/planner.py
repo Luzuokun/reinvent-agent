@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.plan_schema import ALLOWED_STEPS
+from agents.experiment_presets import PresetError, validate_preset_selection
+from agents.plan_schema import ALLOWED_STEPS, PlanValidationError
 
 
 class PlannerAgent:
@@ -19,6 +20,8 @@ class PlannerAgent:
         project_dir: str,
         approve_run: bool,
         skip_reinvent: bool = False,
+        preset_id: str | None = None,
+        scaffold_path: str | None = None,
     ) -> dict[str, Any]:
         steps = list(self.DEFAULT_STEPS)
         if skip_reinvent:
@@ -40,7 +43,20 @@ class PlannerAgent:
         if skip_reinvent:
             notes.append("REINVENT execution skipped (--skip-reinvent).")
 
-        return {
+        try:
+            preset = validate_preset_selection(
+                preset_id,
+                project_dir=project_dir,
+                scaffold_path=scaffold_path,
+            )
+        except PresetError as exc:
+            raise PlanValidationError(str(exc)) from exc
+        if preset:
+            notes.append(
+                f"Experiment preset: {preset['preset_id']} ({preset['description']})"
+            )
+
+        plan: dict[str, Any] = {
             "goal": goal,
             "project_dir": project_dir,
             "approve_run": approve_run,
@@ -51,3 +67,13 @@ class PlannerAgent:
             "planner_fallback": False,
             "planner_warnings": [],
         }
+        if preset.get("preset_id"):
+            plan["preset_id"] = preset["preset_id"]
+            plan["preset"] = {
+                "preset_id": preset["preset_id"],
+                "description": preset["description"],
+                "source_toml": preset["source_toml"],
+            }
+        if preset.get("scaffold_path"):
+            plan["scaffold_path"] = preset["scaffold_path"]
+        return plan

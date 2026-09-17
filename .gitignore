@@ -35,6 +35,7 @@ projects/**/output/*.csv
 !projects/**/output/.gitkeep
 !projects/**/output/sampled-sample.csv
 projects/**/output/*.json
+projects/**/.agent/
 *.chkpt
 
 # OS / editor

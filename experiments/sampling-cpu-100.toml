@@ -1,0 +1,13 @@
+# Human-written preset: sampling-cpu-100
+# CPU sampling, 100 SMILES. Matches the demo project default.
+# Do not generate or edit this file from model output.
+
+run_type = "sampling"
+device = "cpu"
+
+[parameters]
+model_file = "priors/reinvent.prior"
+output_file = "output/sampled.csv"
+num_smiles = 100
+unique_molecules = true
+randomize_smiles = true

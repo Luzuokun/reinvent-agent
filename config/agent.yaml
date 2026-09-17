@@ -28,6 +28,9 @@ planner:
   base_url: null
   # Invalid plan / missing key / provider error → deterministic plan + loud warning
   fallback_on_error: true
+  # Experiment config is a human-written preset ID (see experiments/).
+  # The LLM may only name sampling-cpu-100 / sampling-cpu-1000 /
+  # sampling-cpu-scaffold; it cannot write TOML.
   allowlist:
     - check_environment
     - validate_project

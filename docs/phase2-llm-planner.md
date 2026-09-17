@@ -26,7 +26,9 @@ Critic    (structured evidence only; deterministic default — Phase 3 adds opti
 
 The LLM is a **planner only**. It does not call tools, does not write TOML,
 and does not talk to other agents. Its output is JSON that must pass
-`agents/plan_schema.py` before the executor sees it.
+`agents/plan_schema.py` before the executor sees it. Experiment configuration
+is a **preset ID** from a human-written allowlist — see
+[experiment-presets.md](experiment-presets.md).
 
 | Component | Role in Phase 2 |
 |-----------|-----------------|
@@ -45,7 +47,9 @@ The model may emit **only** these keys:
 {
   "steps": ["check_environment", "validate_project", "..."],
   "notes": ["optional human comments"],
-  "csv_path": null
+  "csv_path": null,
+  "preset_id": null,
+  "scaffold_path": null
 }
 ```
 
@@ -81,9 +85,10 @@ Extremely narrow on purpose:
 
 | Step | Model-controlled params |
 |------|-------------------------|
-| `run_reinvent` | **none**. Config path, cwd, seed, and argv come from the project TOML + `agent.yaml` + CLI. Launch still requires `--approve-run`. |
+| `run_reinvent` | **none**. Config path, cwd, seed, and argv come from a human-written preset ID or the project TOML + `agent.yaml` + CLI. Launch still requires `--approve-run`. The model cannot emit TOML. |
 | `analyze_molecules` | optional `csv_path` that **already exists** and resolves **under** `<project>/output/` |
 | all other steps | none |
+| plan-level | optional `preset_id` (`sampling-cpu-100` / `sampling-cpu-1000` / `sampling-cpu-scaffold`); optional `scaffold_path` only for the scaffold preset, must exist under `<project>/input/` |
 
 If `csv_path` is omitted, the executor keeps the Phase 1 discovery rules
 (inventory / TOML `output_file` / CLI `--csv`).

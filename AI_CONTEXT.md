@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-16**.
+Last updated: **2026-09-17**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,14 +35,14 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：MCP 包装现有 allowlist 工具（v0.6）。** 把 Planner 已有的 8 个步骤暴露给外部 MCP 客户端（Cursor 等），每个 tool 仍调用同一 Python 函数，并沿用同样的路径/步骤限制。Agent **不获得新能力**，只获得新入口。没有 shell 工具，不能改 `reinvent.toml`，不上 docking / MD / 文献，不引入新 Agent 框架。
+**当前：人写实验预设 ID（v0.7）。** Planner（确定性或可选 LLM）只能输出 allowlist 里的 `preset_id`（`sampling-cpu-100` / `sampling-cpu-1000` / `sampling-cpu-scaffold`），**不得生成 TOML 文本**。scaffold / QED 风格目标只允许「选模板 + 填已存在的 `<project>/input/` 路径」。启动仍要 `--approve-run`。非法预设 / 越权路径被 schema 拒绝并回退。MCP **不扩展**（CLI / planner 优先）。没有 docking / MD / 文献，不引入新 Agent 框架。
 
-- `tools/mcp_allowlist.py`：唯一调度面；tool 名 = `ALLOWED_STEPS`；`csv_path` 必须在 `<project>/output/`；`project_dir` 不得逃出仓库根。
-- `tools/mcp_server.py`：stdio MCP server（`python -m tools.mcp_server`）；可选依赖 `mcp>=1.9,<2`。
-- 内部 CLI / Executor 不变，仍直接调 `check_environment` / `analyze_molecules` 等。
+- `experiments/*.toml`：人写的 REINVENT 配置；`agents/experiment_presets.py` 是 ID allowlist 与路径沙箱。
+- `sampling-cpu-scaffold` 唯一可填字段是 `scaffold_path`（必须已存在于 `input/`）。
+- 内部 CLI / Executor 把预设物化到 `<project>/.agent/`，再交给原来的 `run_reinvent`。
 - 多 provider LLM（openai / xai / gemini / openai_compatible）已可用；客户端构造集中在 `agents/llm_client.py`。密钥从环境变量读；启动时加载 gitignored 的仓库根目录 `.env`（已有环境变量优先）。
-- **Transfer learning demo**（`projects/demo_tl`）：预定义 CPU TL TOML + 人批；产物是 checkpoint。本地 `tools/smiles_prep.py` 只做校验/去重。文献 / ChEMBL 属于未来的 Research tool，不在 Chemistry executor 里。
-- 安全不变量不变。
+- **Transfer learning demo**（`projects/demo_tl`）已落地：预定义 CPU TL TOML + 人批；产物是 checkpoint。本地 `tools/smiles_prep.py` 只做校验/去重，不是 Planner 步骤。
+- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml`，不上 docking / MD / 文献。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -111,9 +111,17 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - 校验按 `run_type` 分支；Critic 不因缺少 `sampled.csv` 把诚实的 TL 判 FAIL
 - 分子统计标注 `analysis_source: tl_training_set`（训练集，不是新采样）
 
+### 实验预设 ID（v0.7）
+
+- 人写 TOML：`experiments/sampling-cpu-100.toml`、`sampling-cpu-1000.toml`、`sampling-cpu-scaffold.toml`
+- Planner JSON 可含 `preset_id` / `scaffold_path`；禁止 `toml` / `config_text` / argv
+- CLI：`--preset`、`--scaffold`；非法 ID 被 argparse 拒绝；越权路径 schema 拒绝并 fallback
+- `docs/experiment-presets.md`；测试不依赖 GPU / 网络 / API key
+- MCP 未增加 preset tool（CLI / planner 优先）
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets
 - `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
 
 ---
@@ -145,16 +153,17 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
 | Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
 | MCP wraps existing tools | 新入口（Cursor 等），不新能力；tool 名 = planner allowlist；无 shell |
+| Preset IDs, never TOML | 实验配置只许选人写预设；LLM 不得生成 TOML；启动仍要 `--approve-run` |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist 包装、以及 **CPU transfer learning demo** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、以及人写实验预设 ID 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. **Research tool**（文献 / ChEMBL 下载）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl
 2. 用 TL 后的 checkpoint 再跑 sampling project（TL → sample 两段，仍不许模型改 TOML）
-3. 人写的实验预设 ID（Planner 只许输出预设，不得生成 TOML）
+3. 单轮人批「再跑」（`--from-run` 复制配置；Agent 自己不改参数循环）
 4. 更丰富的过滤 / 导出（仍基于已有 CSV）
 5. Docking / MD 作为 **独立 tool 模块**（各自的人批与环境），不是塞进当前 Executor
 6. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
@@ -168,18 +177,21 @@ Phase 3、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist 包�
 ```text
 main.py                    CLI：Planning → Execution → Tools → Critic
 agents/planner.py          确定性 Planner（默认）
-agents/llm_planner.py      可选 LLM Planner
+agents/llm_planner.py      可选 LLM Planner（可输出 preset_id，不得写 TOML）
+agents/experiment_presets.py  人写预设 allowlist + 路径沙箱
 agents/llm_client.py       多 provider OpenAI-compatible 客户端
-agents/plan_schema.py      plan allowlist
+agents/plan_schema.py      plan allowlist（步骤 + 预设 ID）
 agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
 tools/                     environment / files / reinvent / smiles_prep / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
-projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`
+experiments/               人写 REINVENT 预设 TOML
+projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`
 projects/demo_tl           CPU transfer learning；bundled `input/tl_train.smi`
 config/agent.yaml          planner / critic / 路径 / 阈值
+docs/experiment-presets.md
 docs/mcp-tools.md
 docs/phase2-llm-planner.md
 docs/phase3-llm-critic.md
@@ -226,6 +238,10 @@ python main.py --project projects/demo_tl \
   --goal "Fine-tune prior on bundled SMILES via transfer learning." \
   --approve-run --yes
 
+# 人写预设（Planner/LLM 只能选 ID，不能写 TOML）
+python main.py --project projects/demo_project --goal "Sample 1000" \
+  --preset sampling-cpu-1000 --approve-run --yes
+
 # 离线分析 bundled CSV
 python main.py --project projects/demo_project --goal "Offline" \
   --skip-reinvent --csv projects/demo_project/output/sampled-sample.csv
@@ -242,7 +258,7 @@ python main.py --project projects/demo_project --goal "Offline" \
   --csv projects/demo_project/output/sampled-sample.csv
 ```
 
-关键 flag：`--project` `--goal` `--approve-run` `--yes` `--skip-reinvent` `--csv` `--seed` `--config` `--planner {deterministic,llm}` `--critic {deterministic,llm}` `--provider {openai,xai,gemini,openai_compatible}`
+关键 flag：`--project` `--goal` `--approve-run` `--yes` `--skip-reinvent` `--csv` `--seed` `--config` `--preset {sampling-cpu-100,sampling-cpu-1000,sampling-cpu-scaffold}` `--scaffold` `--planner {deterministic,llm}` `--critic {deterministic,llm}` `--provider {openai,xai,gemini,openai_compatible}`
 
 Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback 关闭）→ 2。
 

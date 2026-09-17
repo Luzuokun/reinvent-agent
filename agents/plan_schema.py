@@ -1,15 +1,19 @@
 """Strict plan schema and validator for REINVENT4 Agent planners.
 
-The model may only name steps from ``ALLOWED_STEPS``. It cannot introduce
-commands, argv fragments, or unrestricted paths. ``run_reinvent`` has no
-model-controlled parameters; ``analyze_molecules`` may optionally name an
-existing CSV that already lives under the project output directory.
+The model may only name steps from ``ALLOWED_STEPS`` and a preset ID from
+``ALLOWED_PRESET_IDS``. It cannot introduce commands, argv fragments,
+TOML text, or unrestricted paths. ``run_reinvent`` has no model-controlled
+parameters; experiment configuration is a human-written preset, not generated
+TOML. ``analyze_molecules`` may optionally name an existing CSV that already
+lives under the project output directory.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+
+from agents.experiment_presets import PresetError, validate_preset_selection
 
 ALLOWED_STEPS: tuple[str, ...] = (
     "check_environment",
@@ -26,7 +30,10 @@ DEFAULT_MAX_STEPS = len(ALLOWED_STEPS)
 
 # Keys an LLM is allowed to emit. approve_run / skip_reinvent are never
 # taken from model text — the CLI / caller owns those flags.
-LLM_PLAN_KEYS = frozenset({"steps", "notes", "csv_path"})
+# Experiment config is preset_id only; TOML / argv / config_text are forbidden.
+LLM_PLAN_KEYS = frozenset(
+    {"steps", "notes", "csv_path", "preset_id", "scaffold_path"}
+)
 
 SYSTEM_PLAN_KEYS = frozenset(
     {
@@ -38,6 +45,7 @@ SYSTEM_PLAN_KEYS = frozenset(
         "planner_fallback",
         "planner_warnings",
         "step_params",
+        "preset",
     }
 )
 
@@ -71,8 +79,19 @@ LLM_PLAN_JSON_SCHEMA: dict[str, Any] = {
         "csv_path": {
             "type": ["string", "null"],
         },
+        "preset_id": {
+            "type": ["string", "null"],
+            "description": (
+                "Allowlisted experiment preset ID "
+                "(sampling-cpu-100, sampling-cpu-1000, sampling-cpu-scaffold), "
+                "or null to use the project's reinvent.toml. Never TOML text."
+            ),
+        },
+        "scaffold_path": {
+            "type": ["string", "null"],
+        },
     },
-    "required": ["steps", "notes", "csv_path"],
+    "required": ["steps", "notes", "csv_path", "preset_id", "scaffold_path"],
 }
 
 
@@ -314,5 +333,30 @@ def validate_plan(
         )
         normalized["csv_path"] = str(resolved)
         normalized["step_params"] = {"analyze_molecules": {"csv_path": str(resolved)}}
+
+    preset_id = raw.get("preset_id")
+    if preset_id is not None and not isinstance(preset_id, str):
+        raise PlanValidationError("preset_id must be a string or null")
+    scaffold_raw = raw.get("scaffold_path")
+    if scaffold_raw is not None and not isinstance(scaffold_raw, str):
+        raise PlanValidationError("scaffold_path must be a string or null")
+
+    try:
+        preset = validate_preset_selection(
+            preset_id,
+            project_dir=project_dir,
+            scaffold_path=scaffold_raw,
+        )
+    except PresetError as exc:
+        raise PlanValidationError(str(exc)) from exc
+    if preset:
+        normalized["preset_id"] = preset["preset_id"]
+        if preset.get("scaffold_path"):
+            normalized["scaffold_path"] = preset["scaffold_path"]
+        normalized["preset"] = {
+            "preset_id": preset["preset_id"],
+            "description": preset["description"],
+            "source_toml": preset["source_toml"],
+        }
 
     return normalized

@@ -1,0 +1,13 @@
+# Human-written preset: sampling-cpu-1000
+# CPU sampling, 1000 SMILES.
+# Do not generate or edit this file from model output.
+
+run_type = "sampling"
+device = "cpu"
+
+[parameters]
+model_file = "priors/reinvent.prior"
+output_file = "output/sampled.csv"
+num_smiles = 1000
+unique_molecules = true
+randomize_smiles = true
