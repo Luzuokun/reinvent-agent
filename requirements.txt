@@ -1,3 +1,4 @@
 pandas>=2.0
 PyYAML>=6.0
 # optional: openai>=1.40  (OpenAI SDK; also used for xAI / Gemini OpenAI-compat)
+# optional: mcp>=1.9,<2   (stdio MCP server: python -m tools.mcp_server)

@@ -35,12 +35,11 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：CSV 描述符 + HTML 直方图（v0.5）。** 离线分析在已有 CSV 上计算 SA Score、PAINS、QED 过滤计数；HTML 报告内嵌 QED / MW / logP 的 SVG 直方图。确定性 Critic 增加可选 `min_mean_qed`（缺 QED 均值则不编造、不套用）。Phase 2/3 的可选 LLM Planner / Critic 与多 provider 客户端不变。
+**当前：MCP 包装现有 allowlist 工具（v0.6）。** 把 Planner 已有的 8 个步骤暴露给外部 MCP 客户端（Cursor 等），每个 tool 仍调用同一 Python 函数，并沿用同样的路径/步骤限制。Agent **不获得新能力**，只获得新入口。没有 shell 工具，不能改 `reinvent.toml`，不上 docking / MD / 文献，不引入新 Agent 框架。
 
-- `analysis/molecule_analysis.py`：SA / PAINS / filters / histogram bins；RDKit 或 Contrib 缺失时字段为 `null`。
-- `analysis/report.py`：3 张内嵌 SVG，不是只 dump JSON。
-- `config/agent.yaml`：`critic.min_mean_qed`（默认 `null`）、`analysis.qed_pass_threshold`。
-- 安全不变量不变：不改 `reinvent.toml`，不新增 Agent 类，不引入 MCP / docking / MD。
+- `tools/mcp_allowlist.py`：唯一调度面；tool 名 = `ALLOWED_STEPS`；`csv_path` 必须在 `<project>/output/`；`project_dir` 不得逃出仓库根。
+- `tools/mcp_server.py`：stdio MCP server（`python -m tools.mcp_server`）；可选依赖 `mcp>=1.9,<2`。
+- 内部 CLI / Executor 不变，仍直接调 `check_environment` / `analyze_molecules` 等。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -92,9 +91,18 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - Critic 可选 `min_mean_qed`；QED 均值缺失时不编造
 - `docs/csv-analysis-report.md`；测试不依赖 GPU / 网络 / API key
 
+### MCP allowlist server（v0.6）
+
+- `tools/mcp_allowlist.py` + `tools/mcp_server.py`：把现有 8 个步骤暴露给 MCP 客户端
+- 与 `agents/plan_schema.ALLOWED_STEPS` 同一名单；无 shell / argv / 任意路径
+- `analyze_molecules` 的 `csv_path` 必须已存在且落在 `<project>/output/`（与 LLM planner 相同）
+- `run_reinvent` 仍要 `approve_run=true`，命令仍是预定义 `reinvent -l … -s … reinvent.toml`，`shell=False`
+- `docs/mcp-tools.md`；allowlist 测试不依赖 MCP SDK；若安装了 `mcp` 则加一条 stdio 集成测试
+- 可选 extra：`pip install '.[mcp]'`（`mcp>=1.9,<2`）
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist
 - `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
 
 ---
@@ -108,6 +116,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。可用 xAI / Gemini / 任意 OpenAI-compatible 端点，不必绑死 OpenAI 配额。
 5. **GPU 作业需要人批准**。本 MVP 的 demo 是 CPU sampling；真 GPU 工作流不自动开跑。
 6. **两套 REINVENT4 树**（本机环境，不在本 git 里）：可编辑的 kinase 安装 vs Documents 下的 clone。Agent 只调用 PATH 上的 `reinvent` 可执行文件 + 项目内 `reinvent.toml`。不要假设某棵源码树被 import。
+7. **MCP 是可选入口**。未安装 `mcp` 时 CLI 不受影响；`python -m tools.mcp_server` 会提示安装 extra。Cursor 里仍要人确认 tool call；`run_reinvent` 仍要 `approve_run=true`。
 
 ---
 
@@ -124,17 +133,17 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Narrow MVP | 暂无 PubMed / docking / MD |
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
 | Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
+| MCP wraps existing tools | 新入口（Cursor 等），不新能力；tool 名 = planner allowlist；无 shell |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3、多 provider LLM、以及 CSV 描述符 / HTML 直方图已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3、多 provider LLM、CSV 描述符 / HTML 直方图、以及 MCP allowlist 包装已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
-1. MCP tool packaging（把现有 tools 暴露给外部客户端，仍 allowlist）
-2. 人写的实验预设 ID（Planner 只许输出预设，不得生成 TOML）
-3. Docking / MD 作为 **独立 tool 模块**（各自的人批与环境），不是塞进当前 Executor
-4. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
+1. 人写的实验预设 ID（Planner 只许输出预设，不得生成 TOML）
+2. Docking / MD 作为 **独立 tool 模块**（各自的人批与环境），不是塞进当前 Executor
+3. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
 
 明确不做：用 chat 框架替换当前管线；让模型改写 `reinvent.toml`；无人值守“自动发现药物”。
 
@@ -152,10 +161,11 @@ agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
-tools/                     environment / files / reinvent / analysis / artifacts
+tools/                     environment / files / reinvent / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
 projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`
 config/agent.yaml          planner / critic / 路径 / 阈值
+docs/mcp-tools.md
 docs/phase2-llm-planner.md
 docs/phase3-llm-critic.md
 docs/csv-analysis-report.md
@@ -172,6 +182,9 @@ pip install -r requirements.txt
 # 可选 LLM（同一 openai SDK；密钥只来自环境变量 / gitignored .env）
 pip install 'openai>=1.40'   # 或 pip install '.[llm]'
 export OPENAI_API_KEY=...    # 或 XAI_API_KEY / GEMINI_API_KEY
+# 可选 MCP（Cursor 等外部客户端；同一 allowlist，无 shell）
+pip install 'mcp>=1.9,<2'    # 或 pip install '.[mcp]'
+python -m tools.mcp_server
 ```
 
 Prior（真实 sampling 需要，gitignored）：
@@ -214,7 +227,7 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 
 ## 8. 非目标 (Non-goals for now)
 
-- 任意 / 未 allowlist 的 shell
+- 任意 / 未 allowlist 的 shell（含 MCP 入口）
 - 无人值守写论文、自动“发现药物”
 - 自动 `pip/conda install`
 - 模型改写 `reinvent.toml`

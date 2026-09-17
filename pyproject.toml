@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reinvent-agent"
-version = "0.5.0"
+version = "0.6.0"
 description = "Minimal safe REINVENT4 research automation MVP"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 llm = ["openai>=1.40.0"]
+mcp = ["mcp>=1.9.0,<2"]
+
+[project.scripts]
+reinvent-mcp = "tools.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["agents*", "tools*", "analysis*"]
