@@ -152,7 +152,10 @@ def test_ligands_must_stay_under_input_or_output(tmp_path: Path):
 
 def test_run_docking_requires_approval(tmp_path: Path):
     proj, receptor, ligand = _project(tmp_path)
-    with patch("tools.docking.run.subprocess.run") as mocked:
+    # Patch the per-ligand launcher, not subprocess.run: the latter is the
+    # stdlib function, so a patch would also swallow vina --version in the
+    # docking env check whenever vina is on PATH.
+    with patch("tools.docking.run._dock_one") as mocked:
         result = run_docking(
             proj,
             receptor=receptor,
@@ -259,7 +262,7 @@ def test_unknown_engine_rejected(tmp_path: Path):
 
 def test_cli_without_approve_does_not_launch(tmp_path: Path):
     proj, receptor, ligand = _project(tmp_path)
-    with patch("tools.docking.run.subprocess.run") as mocked:
+    with patch("tools.docking.run._dock_one") as mocked:
         code = docking_main(
             [
                 "--project",
@@ -487,7 +490,11 @@ def test_build_evidence_omits_docking_key_without_table():
 def test_demo_receptor_fixture_exists():
     receptor = DEMO / "input" / "docking" / "receptor.pdbqt"
     ligands = DEMO / "input" / "docking" / "ligands.smi"
+    ligand = DEMO / "input" / "docking" / "ligand.pdbqt"
     assert receptor.is_file()
     assert ligands.is_file()
     resolved = resolve_receptor_path(DEMO, "input/docking/receptor.pdbqt")
     assert resolved == receptor.resolve()
+    text = ligand.read_text(encoding="utf-8")
+    assert "ROOT" in text
+    assert "TORSDOF" in text

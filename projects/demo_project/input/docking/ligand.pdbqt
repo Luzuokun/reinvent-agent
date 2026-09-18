@@ -1,4 +1,6 @@
 REMARK  Tiny demo ligand (ethanol-like) for conversion-free docking tests.
+ROOT
 ATOM      1  C   LIG     1       0.000   0.000   0.000  1.00  0.00     0.000 C 
 ATOM      2  O   LIG     1       1.400   0.000   0.000  1.00  0.00    -0.400 OA
-END
+ENDROOT
+TORSDOF 0
