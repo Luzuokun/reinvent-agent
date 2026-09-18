@@ -91,6 +91,7 @@ opens a real stdio session and checks `tools/list` + `check_environment` /
 
 ## Out of scope
 
-Docking, MD, literature search, experiment preset IDs, `--from-run`,
-LLM-written `reinvent.toml`, and any Agent framework. Those remain CLI /
-later phases. The executor is not rewritten to speak MCP internally.
+Docking (`python -m tools.docking`), MD, literature search, experiment
+preset IDs, `--from-run`, LLM-written `reinvent.toml`, and any Agent
+framework. Those remain CLI / later phases. The executor is not rewritten
+to speak MCP internally. Docking is **not** an MCP tool.

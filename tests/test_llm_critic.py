@@ -209,6 +209,40 @@ def test_llm_critic_invalid_status_falls_back(caplog):
     assert verdict["critic_warnings"]
 
 
+def test_llm_critic_docking_scores_allowed_when_table_present():
+    results = {
+        "plan": {"approve_run": False, "skip_reinvent": True, "steps": ["docking"]},
+        "steps": {
+            "docking": {
+                "ok": True,
+                "approved": True,
+                "skipped": False,
+                "engine": "vina",
+                "table_present": True,
+                "scores_csv": "output/docking/scores.csv",
+                "n_scored": 2,
+                "score": {"best": -7.2, "mean": -5.1, "n": 2},
+            }
+        },
+        "warnings": [],
+        "errors": [],
+    }
+
+    def complete(_messages):
+        return json.dumps(
+            {
+                "status": "PASS",
+                "issues": ["Best vina docking score is -7.2 (n=2)."],
+                "recommendation": "Human review of the docking table is recommended.",
+            }
+        )
+
+    verdict = _agent(complete_fn=complete).review(results)
+    assert verdict["critic"] == "llm"
+    assert verdict["critic_fallback"] is False
+    assert verdict["status"] == "PASS"
+
+
 def test_llm_critic_invented_md_claim_falls_back():
     def complete(_messages):
         return json.dumps(

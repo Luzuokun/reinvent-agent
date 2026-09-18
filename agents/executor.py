@@ -16,6 +16,24 @@ from tools.reinvent import find_output_files, run_reinvent
 
 logger = logging.getLogger(__name__)
 
+# Docking / MD live in their own modules with their own human approval.
+# Naming them here refuses sneaking vina/gmx into the REINVENT loop.
+INDEPENDENT_MODULE_STEPS = frozenset(
+    {
+        "docking",
+        "run_docking",
+        "run_vina",
+        "run_gnina",
+        "vina",
+        "gnina",
+        "gmx",
+        "run_gmx",
+        "gromacs",
+        "md",
+        "run_md",
+    }
+)
+
 
 class ExecutionAgent:
     """Execute an approved plan using validated tools.
@@ -172,6 +190,13 @@ class ExecutionAgent:
 
             elif step == "critic_review":
                 results["steps"]["critic_review"] = {"pending": True}
+
+            elif step in INDEPENDENT_MODULE_STEPS:
+                results["warnings"].append(
+                    f"{step} is an independent module — not part of the REINVENT "
+                    "executor. Docking: python -m tools.docking (separate "
+                    "--approve-dock). MD/GROMACS is not implemented."
+                )
 
             else:
                 results["warnings"].append(f"Unknown plan step skipped: {step}")

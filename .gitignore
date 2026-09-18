@@ -36,6 +36,8 @@ projects/**/output/*.csv
 !projects/**/output/sampled-sample.csv
 projects/**/output/*.json
 projects/**/.agent/
+projects/**/output/docking/**
+!projects/**/output/docking/.gitkeep
 *.chkpt
 
 # OS / editor

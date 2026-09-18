@@ -3,7 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.8 scope:** same pipeline as v0.7, plus **human-in-the-loop rerun**.
+**v0.9 scope:** same pipeline as v0.8, plus an **independent docking
+module** (`python -m tools.docking`). Prepare receptor/ligand, run Vina or
+GNINA, write `output/docking/scores.csv`. Separate `--approve-dock` and
+docking env checks — vina is **not** a REINVENT executor step. See
+[docs/docking.md](docs/docking.md).
+**v0.8** added **human-in-the-loop rerun**.
 `--from-run <id>` copies experiment CLI config from
 `logs/runs/<id>/result.json`. The executor stays single-shot; the agent does
 not edit TOML or loop. Launch still requires `--approve-run`. See
@@ -236,6 +241,28 @@ python main.py \
 python main.py --from-run last --approve-run
 ```
 
+### Independent docking (`python -m tools.docking`)
+
+Not a Planner/Executor/MCP step. Separate `--approve-dock` and a docking-only
+environment check (Vina / GNINA / Open Babel / Meeko). Scores go to
+`<project>/output/docking/scores.csv`. The REINVENT critic may quote those
+scores only when that table is in the evidence JSON. Details:
+[docs/docking.md](docs/docking.md).
+
+```bash
+python -m tools.docking \
+  --project projects/demo_project \
+  --receptor projects/demo_project/input/docking/receptor.pdbqt \
+  --ligands projects/demo_project/input/docking/ligand.pdbqt \
+  --engine vina \
+  --center 0 0 0 \
+  --size 20 20 20 \
+  --approve-dock --yes
+```
+
+Without `--approve-dock` the module checks paths and docking tools and does
+**not** launch Vina/GNINA. `--approve-run` never starts docking.
+
 ### MCP server (optional)
 
 Same eight allowlisted tools as the planner, over stdio. No shell tool.
@@ -308,7 +335,7 @@ Every invocation writes:
 - `reports/report_<timestamp>.html` — self-contained HTML report (includes the
   `--from-run <id> --approve-run` command)
 
-## Acceptance checklist (6 scenarios)
+## Acceptance checklist (7 scenarios)
 
 Run from the repo root with `conda activate reinvent4`.
 
@@ -364,6 +391,17 @@ Run from the repo root with `conda activate reinvent4`.
    REINVENT is **not** launched without `--approve-run`; HTML shows a
    `--from-run … --approve-run` command; exit `0` (dry-run `WARNING`).
 
+7. **Docking dry-run (no `--approve-dock`)**
+   ```bash
+   python -m tools.docking \
+     --project projects/demo_project \
+     --receptor projects/demo_project/input/docking/receptor.pdbqt \
+     --ligands projects/demo_project/input/docking/ligand.pdbqt \
+     --engine vina --center 0 0 0 --size 20 20 20
+   ```
+   Expect: env/path check only; Vina **not** launched; no `scores.csv`;
+   Critic `WARNING`; exit `0`. `python main.py` still does not call vina.
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -373,11 +411,14 @@ Run from the repo root with `conda activate reinvent4`.
 5. Never delete files; never auto-install packages.
 6. REINVENT requires `--approve-run`, plus interactive confirm or `--yes`.
 7. Every action is logged under `logs/` (including per-run `result.json`).
-8. Optional LLM critic is evidence-only: no tools, no shell, no invented docking/MD/literature.
+8. Optional LLM critic is evidence-only: no tools, no shell, no invented MD/literature.
+   Docking scores may be mentioned only when a docking table is in the evidence JSON.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
 11. `--from-run` copies CLI identity only. It never copies `--approve-run` /
     `--yes`, never edits `reinvent.toml`, and never starts an agent retry loop.
+12. Docking is `python -m tools.docking` with `--approve-dock`. It is not a
+    REINVENT executor step; `--approve-run` never launches vina/gnina/gmx.
 
 ## Relation to other projects
 
@@ -391,11 +432,11 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets (IDs only; never model-authored)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
-docs/            Phase design notes (from-run.md, experiment-presets.md, mcp-tools.md, …)
+docs/            Phase design notes (docking.md, from-run.md, experiment-presets.md, mcp-tools.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

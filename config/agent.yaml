@@ -72,6 +72,14 @@ analysis:
   # Count molecules with QED at or above this value (report/stats only).
   qed_pass_threshold: 0.5
 
+# Independent of the REINVENT executor. python -m tools.docking only.
+# Launch still requires --approve-dock (not --approve-run).
+docking:
+  default_engine: vina
+  default_exhaustiveness: 8
+  default_num_modes: 1
+  max_ligands: 20
+
 reinvent:
   default_seed: 42
   executable: reinvent

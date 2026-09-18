@@ -185,7 +185,8 @@ MCP_TOOL_SPECS: tuple[dict[str, Any], ...] = (
         "name": "critic_review",
         "description": (
             "Deterministic scientific critic over structured execution results. "
-            "Evidence only; no docking/MD/literature claims, no tools, no shell."
+            "Evidence only; no tools, no shell. Docking/MD/literature claims "
+            "are rejected unless a docking score table is present in evidence."
         ),
         "input_schema": _schema(
             {

@@ -140,6 +140,12 @@ class CriticAgent:
                 "Molecule stats are from the TL training SMILES, not molecules sampled from the new model"
             )
 
+        docking = steps.get("docking") if isinstance(steps.get("docking"), dict) else None
+        if docking is None and isinstance(results.get("docking"), dict):
+            docking = results["docking"]
+        if docking:
+            status = _review_docking(docking, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -165,3 +171,63 @@ class CriticAgent:
                 "min_mean_qed": self.min_mean_qed,
             },
         }
+
+
+def _review_docking(
+    docking: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate docking evidence when a score table (or failure) is attached.
+
+    Called only if the docking module put a ``docking`` object on the results.
+    REINVENT-only runs never hit this branch, so docking claims stay forbidden
+    unless that evidence is present.
+    """
+    approved = bool(docking.get("approved"))
+    skipped = bool(docking.get("skipped"))
+    table_present = bool(
+        docking.get("table_present")
+        or docking.get("scores_csv")
+        or (isinstance(docking.get("score"), dict) and docking.get("score"))
+    )
+    n_scored = int(docking.get("n_scored") or 0)
+    errors = docking.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "Docking was not executed (pass --approve-dock to run the independent module)"
+        )
+        return status
+
+    if docking.get("ok") is False or (errors and not table_present):
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(docking.get("message") or "Docking failed")
+        return status
+
+    if not table_present:
+        status = "FAIL"
+        issues.append("Docking ran but no score table was written under output/docking/")
+        return status
+
+    if n_scored <= 0:
+        status = "FAIL"
+        issues.append("Docking score table is present but contains no scores")
+        return status
+
+    best = None
+    score_block = docking.get("score")
+    if isinstance(score_block, dict):
+        best = score_block.get("best")
+    if best is not None:
+        issues.append(
+            f"Docking score table present (n={n_scored}, best={best}, "
+            f"engine={docking.get('engine')})"
+        )
+    return status

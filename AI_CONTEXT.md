@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-17**.
+Last updated: **2026-09-18**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,15 +35,13 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：单轮人批再跑（v0.8）。** Executor 仍只走一遍；人读完 HTML 报告后再次调用 CLI。`--from-run <id>` 从 `logs/runs/<id>/result.json` 复制实验身份（project / goal / preset / scaffold / seed 等），**绝不复制** `--approve-run` / `--yes` / `--skip-reinvent`。启动 REINVENT 仍要 `--approve-run`。Agent **不得**自己改 TOML，也不得参数循环。MCP **不扩展**。没有 docking / MD / 文献，不引入新 Agent 框架。
+**当前：对接独立模块（v0.9）。** `tools/docking/` 是目录级 tool：准备受体/配体、Vina 或 GNINA、分数表写入 `<project>/output/docking/`。单独人批（`--approve-dock`）与单独环境检查（vina/gnina/obabel/meeko），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 docking 步骤。Critic 只有在 evidence JSON 里出现 docking 分数表时才允许评论分数，否则继续拒绝对接声称。没有 LLM 写的 TOML、没有任意 shell、没有 MD / 文献，不引入新 Agent 框架。
 
-- `tools/from_run.py`：run id 沙箱（只读 `logs/runs/`）、allowlist 字段拷贝；显式 CLI 覆盖复制值。
-- 每份 `result.json` 带 `run_id` + `invocation`，方便下一轮人批复制。
-- HTML 报告给出 `python main.py --from-run <id> --approve-run`。
-- 人写实验预设 ID（v0.7）仍是改实验的唯一方式：换 `--preset`，不要让模型写 TOML。
-- 多 provider LLM（openai / xai / gemini / openai_compatible）已可用；客户端构造集中在 `agents/llm_client.py`。密钥从环境变量读；启动时加载 gitignored 的仓库根目录 `.env`（已有环境变量优先）。
-- **Transfer learning demo**（`projects/demo_tl`）已落地：预定义 CPU TL TOML + 人批；产物是 checkpoint。本地 `tools/smiles_prep.py` 只做校验/去重，不是 Planner 步骤。
-- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml`，不上 docking / MD / 文献。
+- `python -m tools.docking`：唯一会启动 Vina/GNINA 的入口；预定义 argv，`shell=False`。
+- 受体必须已在 `<project>/input/`；配体在 `input/` 或 `output/`；产物只写 `output/docking/`。
+- REINVENT 的 `check_environment` **不**探测 vina/gnina。
+- `--from-run` / 人写预设 / MCP 行为不变。启动 REINVENT 仍要 `--approve-run`。
+- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml`，不上 MD / 文献。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -79,7 +77,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `agents/critic_schema.py` + `agents/llm_critic.py`
 - `--critic {deterministic,llm}`；`docs/phase3-llm-critic.md`
 - evidence-only；docking/MD/文献等无证据声称会被 schema 拒绝并 fallback
-- 确定性 `CriticAgent.review` 算法未改
+- 有 docking 分数表时允许评论该表上的分数；否则继续拒绝
 
 ### 多 provider LLM（openai / xai / gemini / openai_compatible）
 
@@ -128,9 +126,18 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - Executor 仍单次；HTML 给出再跑命令；`docs/from-run.md`
 - 测试覆盖路径逃逸、非法预设、批准旗标泄漏；不依赖 GPU / 网络
 
+### 对接独立模块（v0.9）
+
+- `tools/docking/`：env / prepare / engines / CLI；`python -m tools.docking`
+- 单独 `--approve-dock` + 单独 `check_docking_environment`；Executor 遇到 `run_vina` / `gmx` 会拒绝并警告
+- 分数表：`<project>/output/docking/scores.csv`；demo 夹具在 `projects/demo_project/input/docking/`
+- Critic：`evidence.docking.table_present` 才允许评论 vina/gnina 分数
+- `docs/docking.md`；测试 mock Vina，缺二进制则 skip，不依赖 GPU / 网络
+- MCP 不增加 docking tool
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run、docking
 - `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
 
 ---
@@ -139,7 +146,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 1. **Agent 可靠性 / scientific bullshit**  
    模型仍可能把计数讲成“发现了药”。Planner/Critic 用 schema + fallback 压风险，但不能替代人读报告。
-2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。
+2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。`vina` / `gnina` 同样：对接模块单独检查，不自动安装，也不混进 REINVENT 环境探测。
 3. **Dry-run 分析陈旧 CSV** 容易让人以为刚生成了一批分子。v0.2 已标注；仍需在 UI/文档里盯着。
 4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。可用 xAI / Gemini / 任意 OpenAI-compatible 端点，不必绑死 OpenAI 配额。`ALL_PROXY=socks://...` 会被跳过并改用 `HTTP(S)_PROXY`。
 5. **GPU 作业需要人批准**。本 MVP 的 demo 是 CPU sampling；真 GPU 工作流不自动开跑。
@@ -158,23 +165,24 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Never LLM → shell | 模型文本不进 `subprocess`、不进 argv |
 | Human approve for reinvent | `--approve-run` + 确认 / `--yes` |
 | Planner / Executor / Critic 分离 | 计划、执行、评价三条边界；Phase 3 只加 Critic 的 LLM 层 |
-| Narrow MVP | 暂无 PubMed / docking / MD |
+| Narrow MVP | 文献 / MD 仍独立模块之后再做；对接已是独立 tool，不进 REINVENT Executor |
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
 | Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
 | MCP wraps existing tools | 新入口（Cursor 等），不新能力；tool 名 = planner allowlist；无 shell |
 | Preset IDs, never TOML | 实验配置只许选人写预设；LLM 不得生成 TOML；启动仍要 `--approve-run` |
 | HITL rerun, never agent loop | `--from-run` 只复制 CLI 身份；人改参数后再次调用；Executor 不循环、不改 TOML |
+| Docking is a separate module | `--approve-dock` ≠ `--approve-run`；vina/gnina 不进 Planner/MCP allowlist |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、以及 **单轮人批 `--from-run`** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、以及 **对接独立模块（Vina/GNINA）** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. **Research tool**（文献 / ChEMBL 下载）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl
 2. 用 TL 后的 checkpoint 再跑 sampling project（TL → sample 两段，仍不许模型改 TOML）
 3. 更丰富的过滤 / 导出（仍基于已有 CSV）
-4. Docking / MD 作为 **独立 tool 模块**（各自的人批与环境），不是塞进当前 Executor
+4. MD 作为 **独立 tool 模块**（自己的人批与环境），不是塞进当前 Executor
 5. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
 
 明确不做：用 chat 框架替换当前管线；让模型改写 `reinvent.toml`；无人值守“自动发现药物”。
@@ -194,13 +202,14 @@ agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
-tools/                     environment / files / reinvent / smiles_prep / analysis / artifacts / MCP allowlist
+tools/                     environment / files / reinvent / smiles_prep / docking / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
 experiments/               人写 REINVENT 预设 TOML
-projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`
+projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` 夹具
 projects/demo_tl           CPU transfer learning；bundled `input/tl_train.smi`
 config/agent.yaml          planner / critic / 路径 / 阈值
 docs/from-run.md
+docs/docking.md
 docs/experiment-presets.md
 docs/mcp-tools.md
 docs/phase2-llm-planner.md
@@ -255,6 +264,13 @@ python main.py --project projects/demo_project --goal "Sample 1000" \
 # 人读报告后再跑：复制上一轮配置，仍要 --approve-run（Agent 不循环、不改 TOML）
 python main.py --from-run last --preset sampling-cpu-1000 --approve-run --yes
 
+# 独立对接（不进 REINVENT Executor；另需 --approve-dock）
+python -m tools.docking \
+  --project projects/demo_project \
+  --receptor input/docking/receptor.pdbqt \
+  --ligands input/docking/ligand.pdbqt \
+  --engine vina --center 0 0 0 --size 20 20 20 --approve-dock --yes
+
 # 离线分析 bundled CSV
 python main.py --project projects/demo_project --goal "Offline" \
   --skip-reinvent --csv projects/demo_project/output/sampled-sample.csv
@@ -283,7 +299,7 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 - 无人值守写论文、自动“发现药物”
 - 自动 `pip/conda install`
 - 模型改写 `reinvent.toml`
-- PubMed、ChEMBL 下载、docking、GROMACS/MD（独立 Research / Docking / MD 模块之前）
+- PubMed、ChEMBL 下载、GROMACS/MD（独立 Research / MD 模块之前）
 - CrewAI / LangGraph / LlamaIndex / 多 agent 对话框架
 - 把 LLM 输出当命令执行
 

@@ -34,6 +34,7 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "docking",
     "autodock",
     "vina",
+    "gnina",
     "glide",
     "gromacs",
     "namd",
@@ -48,6 +49,11 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "free energy perturbation",
     "mm-gbsa",
     "mmgbsa",
+)
+
+# These may appear in a critic verdict only when evidence.docking.table_present.
+DOCKING_CLAIM_TERMS: frozenset[str] = frozenset(
+    {"docking", "autodock", "vina", "gnina"}
 )
 
 _SHELLISH = re.compile(
@@ -113,12 +119,15 @@ def build_evidence_summary(
     inventory = steps.get("find_output") if isinstance(steps.get("find_output"), dict) else {}
     analysis = steps.get("analyze_molecules") if isinstance(steps.get("analyze_molecules"), dict) else {}
     rdkit = analysis.get("rdkit") if isinstance(analysis.get("rdkit"), dict) else {}
+    docking = steps.get("docking") if isinstance(steps.get("docking"), dict) else {}
+    if not docking and isinstance(results.get("docking"), dict):
+        docking = results["docking"]
 
     command = run.get("command")
     if not isinstance(command, list):
         command = None
 
-    return {
+    summary = {
         "plan": {
             "approve_run": plan.get("approve_run"),
             "skip_reinvent": plan.get("skip_reinvent"),
@@ -189,6 +198,10 @@ def build_evidence_summary(
         },
         "thresholds": dict(thresholds or {}),
     }
+    docking_block = _docking_block(docking)
+    if docking_block:
+        summary["docking"] = docking_block
+    return summary
 
 
 def validate_critic_verdict(
@@ -286,16 +299,34 @@ def _reject_ungrounded_claims(
 ) -> None:
     evidence_text = json.dumps(evidence, ensure_ascii=False, default=str).lower()
     blob = (" ".join(issues) + " " + recommendation).lower()
-    invented = [
-        term
-        for term in FORBIDDEN_CLAIM_TERMS
-        if term in blob and term not in evidence_text
-    ]
+    docking_ok = _has_docking_table(evidence)
+    invented: list[str] = []
+    for term in FORBIDDEN_CLAIM_TERMS:
+        if term not in blob:
+            continue
+        if term in DOCKING_CLAIM_TERMS:
+            # Plan step names must not unlock docking talk; need a score table.
+            if not docking_ok or term not in evidence_text:
+                invented.append(term)
+            continue
+        if term not in evidence_text:
+            invented.append(term)
     if invented:
         raise CriticValidationError(
             "critic invented out-of-scope claims not present in evidence: "
             + ", ".join(invented)
         )
+
+
+def _has_docking_table(evidence: dict[str, Any]) -> bool:
+    docking = evidence.get("docking") if isinstance(evidence, dict) else None
+    if not isinstance(docking, dict) or not docking:
+        return False
+    return bool(
+        docking.get("table_present")
+        or docking.get("scores_csv")
+        or (isinstance(docking.get("score"), dict) and docking.get("n_scored"))
+    )
 
 
 def _truncate_text(value: Any, limit: int = 400) -> str | None:
@@ -360,4 +391,39 @@ def _lipinski_block(value: Any) -> dict[str, Any] | None:
         "pass": value.get("pass"),
         "fail": value.get("fail"),
         "fraction": value.get("fraction"),
+    }
+
+
+def _docking_block(value: Any) -> dict[str, Any] | None:
+    """Include a docking table summary only when the docking module attached one.
+
+    Omitting this block (or leaving it empty) keeps docking/vina claims forbidden.
+    SMILES lists, pose coordinates, and raw logs are never copied here.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    engine = value.get("engine")
+    table_present = bool(
+        value.get("table_present")
+        or value.get("scores_csv")
+        or (isinstance(value.get("score"), dict) and value.get("score"))
+    )
+    return {
+        "ok": value.get("ok"),
+        "approved": value.get("approved"),
+        "skipped": value.get("skipped"),
+        "success": value.get("success"),
+        "engine": engine,
+        "table_present": table_present,
+        "scores_csv": value.get("scores_csv"),
+        "n_ligands": value.get("n_ligands"),
+        "n_scored": value.get("n_scored"),
+        "score": _stat_block(value.get("score"))
+        if isinstance(value.get("score"), dict)
+        else None,
+        "best_score": (value.get("score") or {}).get("best")
+        if isinstance(value.get("score"), dict)
+        else value.get("best_score"),
+        "message": _truncate_text(value.get("message")),
+        "errors": _truncate_str_list(value.get("errors")),
     }

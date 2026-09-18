@@ -27,7 +27,8 @@ Critic  ── deterministic (default) ──► {status, issues, recommendation
 
 The LLM is a **critic only**. It does not call tools, does not write files,
 does not talk to other agents, and does not invent docking / MD / literature
-results. Its output is JSON that must pass `agents/critic_schema.py` before
+results unless a docking score table is already in the evidence JSON. Its
+output is JSON that must pass `agents/critic_schema.py` before
 the HTML report or process exit code sees it.
 
 | Component | Role in Phase 3 |
@@ -61,7 +62,8 @@ The runtime then attaches fields the model **cannot** set:
 
 Unknown keys, empty recommendations, shell-like text, and claims about
 docking / GROMACS / PubMed / binding affinities that are **not** in the
-evidence JSON are rejected.
+evidence JSON are rejected. Docking score comments are allowed only when
+`evidence.docking.table_present` is true (independent docking module).
 
 ### What the model is allowed to see
 
@@ -74,6 +76,7 @@ evidence JSON are rejected.
 - REINVENT skipped / success / exit_code / message / argv
 - inventory csv_count
 - analysis counts, duplicate fraction, RDKit summary stats (incl. SA / PAINS / filters when present), `analysis_source`
+- optional `docking` block (engine, score table summary) **only** when the docking module attached one
 - critic numeric thresholds
 
 It does **not** send SMILES lists, CSV contents, HTML, or stdout dumps.
@@ -199,5 +202,7 @@ fixture as Phase 1.
 
 ## Out of scope (still)
 
-PubMed, docking, MD, auto-install, rewriting TOML, CrewAI / LangGraph /
-LlamaIndex / multi-agent chat frameworks, MCP servers.
+PubMed, MD, auto-install, rewriting TOML, CrewAI / LangGraph /
+LlamaIndex / multi-agent chat frameworks, MCP servers. Docking is an
+independent module (`python -m tools.docking`); the LLM critic may quote
+those scores only when the docking table is in evidence.
