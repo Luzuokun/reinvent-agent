@@ -1,0 +1,6 @@
+Tiny water demo fixture (not a scientific MD system)
+    3
+    1SOL     OW    1   1.000   1.000   1.000
+    1SOL    HW1    2   1.100   1.000   1.000
+    1SOL    HW2    3   0.967   1.094   1.000
+   3.00000   3.00000   3.00000

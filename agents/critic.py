@@ -146,6 +146,12 @@ class CriticAgent:
         if docking:
             status = _review_docking(docking, issues=issues, status=status)
 
+        md = steps.get("md") if isinstance(steps.get("md"), dict) else None
+        if md is None and isinstance(results.get("md"), dict):
+            md = results["md"]
+        if md:
+            status = _review_md(md, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -230,4 +236,59 @@ def _review_docking(
             f"Docking score table present (n={n_scored}, best={best}, "
             f"engine={docking.get('engine')})"
         )
+    return status
+
+
+def _review_md(
+    md: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate MD evidence when an RMSD/RMSF table (or failure) is attached.
+
+    Called only if the MD module put an ``md`` object on the results.
+    REINVENT-only runs never hit this branch, so GROMACS claims stay forbidden
+    unless that evidence is present.
+    """
+    approved = bool(md.get("approved"))
+    skipped = bool(md.get("skipped"))
+    table_present = bool(
+        md.get("table_present")
+        or md.get("rmsd_csv")
+        or md.get("rmsf_csv")
+        or (isinstance(md.get("rmsd"), dict) and md.get("rmsd"))
+    )
+    n_frames = int(md.get("n_frames") or 0)
+    errors = md.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "MD was not executed (pass --approve-md to run the independent module)"
+        )
+        return status
+
+    if md.get("ok") is False or (errors and not table_present):
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(md.get("message") or "MD failed")
+        return status
+
+    if not table_present:
+        status = "FAIL"
+        issues.append("MD ran but no RMSD/RMSF table was written under output/md/")
+        return status
+
+    rmsd_block = md.get("rmsd") if isinstance(md.get("rmsd"), dict) else {}
+    mean = rmsd_block.get("mean") if isinstance(rmsd_block, dict) else None
+    detail = f"n_frames={n_frames}"
+    if mean is not None:
+        detail += f", rmsd_mean={mean}"
+    issues.append(
+        f"MD table present ({detail}, protocol={md.get('protocol')}, engine=gmx)"
+    )
     return status

@@ -49,11 +49,22 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "free energy perturbation",
     "mm-gbsa",
     "mmgbsa",
+    "rmsf",
 )
 
 # These may appear in a critic verdict only when evidence.docking.table_present.
 DOCKING_CLAIM_TERMS: frozenset[str] = frozenset(
     {"docking", "autodock", "vina", "gnina"}
+)
+
+# These may appear only when evidence.md.table_present (independent MD module).
+MD_CLAIM_TERMS: frozenset[str] = frozenset(
+    {
+        "gromacs",
+        "molecular dynamics",
+        "md simulation",
+        "rmsf",
+    }
 )
 
 _SHELLISH = re.compile(
@@ -122,6 +133,9 @@ def build_evidence_summary(
     docking = steps.get("docking") if isinstance(steps.get("docking"), dict) else {}
     if not docking and isinstance(results.get("docking"), dict):
         docking = results["docking"]
+    md = steps.get("md") if isinstance(steps.get("md"), dict) else {}
+    if not md and isinstance(results.get("md"), dict):
+        md = results["md"]
 
     command = run.get("command")
     if not isinstance(command, list):
@@ -201,6 +215,9 @@ def build_evidence_summary(
     docking_block = _docking_block(docking)
     if docking_block:
         summary["docking"] = docking_block
+    md_block = _md_block(md)
+    if md_block:
+        summary["md"] = md_block
     return summary
 
 
@@ -300,6 +317,7 @@ def _reject_ungrounded_claims(
     evidence_text = json.dumps(evidence, ensure_ascii=False, default=str).lower()
     blob = (" ".join(issues) + " " + recommendation).lower()
     docking_ok = _has_docking_table(evidence)
+    md_ok = _has_md_table(evidence)
     invented: list[str] = []
     for term in FORBIDDEN_CLAIM_TERMS:
         if term not in blob:
@@ -307,6 +325,10 @@ def _reject_ungrounded_claims(
         if term in DOCKING_CLAIM_TERMS:
             # Plan step names must not unlock docking talk; need a score table.
             if not docking_ok or term not in evidence_text:
+                invented.append(term)
+            continue
+        if term in MD_CLAIM_TERMS:
+            if not md_ok or term not in evidence_text:
                 invented.append(term)
             continue
         if term not in evidence_text:
@@ -326,6 +348,18 @@ def _has_docking_table(evidence: dict[str, Any]) -> bool:
         docking.get("table_present")
         or docking.get("scores_csv")
         or (isinstance(docking.get("score"), dict) and docking.get("n_scored"))
+    )
+
+
+def _has_md_table(evidence: dict[str, Any]) -> bool:
+    md = evidence.get("md") if isinstance(evidence, dict) else None
+    if not isinstance(md, dict) or not md:
+        return False
+    return bool(
+        md.get("table_present")
+        or md.get("rmsd_csv")
+        or md.get("rmsf_csv")
+        or (isinstance(md.get("rmsd"), dict) and md.get("n_frames"))
     )
 
 
@@ -357,6 +391,17 @@ def _stat_block(value: Any) -> dict[str, Any] | None:
     return {
         "mean": value.get("mean"),
         "stdev": value.get("stdev"),
+        "n": value.get("n"),
+    }
+
+
+def _md_stat_block(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        "mean": value.get("mean"),
+        "max": value.get("max"),
+        "last": value.get("last"),
         "n": value.get("n"),
     }
 
@@ -424,6 +469,45 @@ def _docking_block(value: Any) -> dict[str, Any] | None:
         "best_score": (value.get("score") or {}).get("best")
         if isinstance(value.get("score"), dict)
         else value.get("best_score"),
+        "message": _truncate_text(value.get("message")),
+        "errors": _truncate_str_list(value.get("errors")),
+    }
+
+
+def _md_block(value: Any) -> dict[str, Any] | None:
+    """Include an MD table summary only when the MD module attached one.
+
+    Omitting this block keeps GROMACS / RMSF / MD-simulation claims forbidden.
+    Full mdp text, trajectories, and stdout are never copied here.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    table_present = bool(
+        value.get("table_present")
+        or value.get("rmsd_csv")
+        or value.get("rmsf_csv")
+        or (isinstance(value.get("rmsd"), dict) and value.get("rmsd"))
+    )
+    return {
+        "ok": value.get("ok"),
+        "approved": value.get("approved"),
+        "skipped": value.get("skipped"),
+        "success": value.get("success"),
+        "engine": value.get("engine") or "gmx",
+        "package": "gromacs",
+        "modality": "molecular dynamics",
+        "kind": "md simulation",
+        "protocol": value.get("protocol"),
+        "table_present": table_present,
+        "rmsd_csv": value.get("rmsd_csv"),
+        "rmsf_csv": value.get("rmsf_csv"),
+        "n_frames": value.get("n_frames"),
+        "rmsd": _md_stat_block(value.get("rmsd"))
+        if isinstance(value.get("rmsd"), dict)
+        else None,
+        "rmsf": _md_stat_block(value.get("rmsf"))
+        if isinstance(value.get("rmsf"), dict)
+        else None,
         "message": _truncate_text(value.get("message")),
         "errors": _truncate_str_list(value.get("errors")),
     }

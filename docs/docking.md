@@ -45,8 +45,9 @@ Critic  (only if that docking object is in the evidence JSON)
 | Executor / planner allowlist / MCP | Unchanged: no `run_vina`, no `gmx` |
 | Critic | May mention docking **scores** only when `evidence.docking.table_present` |
 
-No LLM-written TOML, no arbitrary shell, no MD (Phase 6), no literature
-(Phase 7).
+No LLM-written TOML, no arbitrary shell, no literature (Phase 7). MD is a
+separate module (`python -m tools.md`, `--approve-md`); see
+[docs/md.md](md.md).
 
 ## How to run
 
@@ -127,5 +128,6 @@ Tests mock Vina. They do not need GPU, network, or a docking binary. If
 
 ## Out of scope
 
-GROMACS / MD, literature search, MCP docking tools, LLM-written box/TOML,
-rewriting `reinvent.toml`, adding vina to the REINVENT Executor loop.
+Literature search, MCP docking tools, LLM-written box/TOML, rewriting
+`reinvent.toml`, adding vina to the REINVENT Executor loop. GROMACS is
+`python -m tools.md`, not this module.

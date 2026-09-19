@@ -243,6 +243,43 @@ def test_llm_critic_docking_scores_allowed_when_table_present():
     assert verdict["status"] == "PASS"
 
 
+def test_llm_critic_md_metrics_allowed_when_table_present():
+    results = {
+        "plan": {"approve_run": False, "skip_reinvent": True, "steps": ["md"]},
+        "steps": {
+            "md": {
+                "ok": True,
+                "approved": True,
+                "skipped": False,
+                "engine": "gmx",
+                "protocol": "em-nvt",
+                "table_present": True,
+                "rmsd_csv": "output/md/rmsd.csv",
+                "rmsf_csv": "output/md/rmsf.csv",
+                "n_frames": 3,
+                "rmsd": {"mean": 0.012, "max": 0.02, "last": 0.02, "n": 3},
+                "rmsf": {"mean": 0.012, "max": 0.015, "n": 3},
+            }
+        },
+        "warnings": [],
+        "errors": [],
+    }
+
+    def complete(_messages):
+        return json.dumps(
+            {
+                "status": "PASS",
+                "issues": ["GROMACS RMSF mean is 0.012 nm (n=3)."],
+                "recommendation": "Human review of the MD table is recommended.",
+            }
+        )
+
+    verdict = _agent(complete_fn=complete).review(results)
+    assert verdict["critic"] == "llm"
+    assert verdict["critic_fallback"] is False
+    assert verdict["status"] == "PASS"
+
+
 def test_llm_critic_invented_md_claim_falls_back():
     def complete(_messages):
         return json.dumps(

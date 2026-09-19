@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-18**.
+Last updated: **2026-09-19**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,13 +35,13 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：对接独立模块（v0.9）。** `tools/docking/` 是目录级 tool：准备受体/配体、Vina 或 GNINA、分数表写入 `<project>/output/docking/`。单独人批（`--approve-dock`）与单独环境检查（vina/gnina/obabel/meeko），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 docking 步骤。Critic 只有在 evidence JSON 里出现 docking 分数表时才允许评论分数，否则继续拒绝对接声称。没有 LLM 写的 TOML、没有任意 shell、没有 MD / 文献，不引入新 Agent 框架。
+**当前：MD 独立模块（v0.10）。** `tools/md/` 是目录级 tool：从人写 mdp 模板物化参数、短最小化/NVT、RMSD/RMSF 表写入 `<project>/output/md/`。单独人批（`--approve-md`）与单独环境检查（`gmx` / `gmx_mpi`），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 md / gmx 步骤。Critic 只有在 evidence JSON 里出现 MD 表时才允许评论 RMSD/RMSF，否则继续拒绝 GROMACS 声称。mdp 与 TOML 相同：只用人工模板，允许改的标量仅限 `nsteps` / `dt` / `ref_t`。没有 LLM 写的 TOML/mdp、没有任意 shell、没有文献 / MM-PBSA，不引入新 Agent 框架。默认协议是 `em-nvt` 烟测，不是 100 ns 生产（`experiments/md.mdp` 已入库但不启动）。
 
-- `python -m tools.docking`：唯一会启动 Vina/GNINA 的入口；预定义 argv，`shell=False`。
-- 受体必须已在 `<project>/input/`；配体在 `input/` 或 `output/`；产物只写 `output/docking/`。
-- REINVENT 的 `check_environment` **不**探测 vina/gnina。
-- `--from-run` / 人写预设 / MCP 行为不变。启动 REINVENT 仍要 `--approve-run`。
-- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml`，不上 MD / 文献。
+- `python -m tools.md`：唯一会启动 GROMACS 的入口；预定义 argv，`shell=False`，CPU `mdrun`。
+- 结构与拓扑必须已在 `<project>/input/`；产物只写 `output/md/`。
+- REINVENT 的 `check_environment` **不**探测 gmx。
+- `--from-run` / 人写预设 / MCP / 对接模块行为不变。启动 REINVENT 仍要 `--approve-run`；对接仍要 `--approve-dock`。
+- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上文献。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -135,9 +135,20 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `docs/docking.md`；测试 mock Vina，缺二进制则 skip，不依赖 GPU / 网络
 - MCP 不增加 docking tool
 
+### MD 独立模块（v0.10）
+
+- `tools/md/`：env / mdp / commands / prepare / analyze / CLI；`python -m tools.md`
+- 单独 `--approve-md` + 单独 `check_md_environment`；Executor 遇到 `gmx` / `run_md` 会拒绝并警告
+- 人写模板：`experiments/minimization.mdp`、`nvt.mdp`；生产 `experiments/md.mdp`（100 ns，非默认、本阶段不 mdrun）
+- 允许改的标量：`nsteps`、`dt`、`ref_t`；拒绝 integrator / cutoff / constraint 以及整份 mdp
+- 表：`<project>/output/md/rmsd.csv`、`rmsf.csv`；demo 夹具在 `projects/demo_project/input/md/`
+- Critic：`evidence.md.table_present` 才允许评论 GROMACS / RMSF
+- `docs/md.md`；测试 mock gmx，缺二进制则 skip，不依赖 GPU / 网络，不跑 100 ns
+- MCP 不增加 md / gmx tool
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run、docking
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run、docking、md
 - `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
 
 ---
@@ -146,7 +157,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 1. **Agent 可靠性 / scientific bullshit**  
    模型仍可能把计数讲成“发现了药”。Planner/Critic 用 schema + fallback 压风险，但不能替代人读报告。
-2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。`vina` / `gnina` 同样：对接模块单独检查，不自动安装，也不混进 REINVENT 环境探测。
+2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。`vina` / `gnina` / `gmx` 同样：对接与 MD 模块单独检查，不自动安装，也不混进 REINVENT 环境探测。
 3. **Dry-run 分析陈旧 CSV** 容易让人以为刚生成了一批分子。v0.2 已标注；仍需在 UI/文档里盯着。
 4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。可用 xAI / Gemini / 任意 OpenAI-compatible 端点，不必绑死 OpenAI 配额。`ALL_PROXY=socks://...` 会被跳过并改用 `HTTP(S)_PROXY`。
 5. **GPU 作业需要人批准**。本 MVP 的 demo 是 CPU sampling；真 GPU 工作流不自动开跑。
@@ -165,24 +176,25 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Never LLM → shell | 模型文本不进 `subprocess`、不进 argv |
 | Human approve for reinvent | `--approve-run` + 确认 / `--yes` |
 | Planner / Executor / Critic 分离 | 计划、执行、评价三条边界；Phase 3 只加 Critic 的 LLM 层 |
-| Narrow MVP | 文献 / MD 仍独立模块之后再做；对接已是独立 tool，不进 REINVENT Executor |
+| Narrow MVP | 文献仍独立模块之后再做；对接与短 MD 已是独立 tool，不进 REINVENT Executor |
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
 | Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
 | MCP wraps existing tools | 新入口（Cursor 等），不新能力；tool 名 = planner allowlist；无 shell |
 | Preset IDs, never TOML | 实验配置只许选人写预设；LLM 不得生成 TOML；启动仍要 `--approve-run` |
 | HITL rerun, never agent loop | `--from-run` 只复制 CLI 身份；人改参数后再次调用；Executor 不循环、不改 TOML |
 | Docking is a separate module | `--approve-dock` ≠ `--approve-run`；vina/gnina 不进 Planner/MCP allowlist |
+| MD is a separate module | `--approve-md` ≠ `--approve-run`；gmx 不进 Planner/MCP allowlist；mdp 只许改白名单标量 |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、以及 **对接独立模块（Vina/GNINA）** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、以及 **MD 独立模块（GROMACS 短链）** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. **Research tool**（文献 / ChEMBL 下载）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl
 2. 用 TL 后的 checkpoint 再跑 sampling project（TL → sample 两段，仍不许模型改 TOML）
 3. 更丰富的过滤 / 导出（仍基于已有 CSV）
-4. MD 作为 **独立 tool 模块**（自己的人批与环境），不是塞进当前 Executor
+4. 生产时长 MD / NPT / MM-PBSA（仍独立 tool，另批）
 5. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
 
 明确不做：用 chat 框架替换当前管线；让模型改写 `reinvent.toml`；无人值守“自动发现药物”。
@@ -202,14 +214,15 @@ agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
-tools/                     environment / files / reinvent / smiles_prep / docking / analysis / artifacts / MCP allowlist
+tools/                     environment / files / reinvent / smiles_prep / docking / md / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
-experiments/               人写 REINVENT 预设 TOML
-projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` 夹具
+experiments/               人写 REINVENT 预设 TOML 与 GROMACS mdp 模板
+projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` 与 `input/md/` 夹具
 projects/demo_tl           CPU transfer learning；bundled `input/tl_train.smi`
 config/agent.yaml          planner / critic / 路径 / 阈值
 docs/from-run.md
 docs/docking.md
+docs/md.md
 docs/experiment-presets.md
 docs/mcp-tools.md
 docs/phase2-llm-planner.md
@@ -271,6 +284,13 @@ python -m tools.docking \
   --ligands input/docking/ligand.pdbqt \
   --engine vina --center 0 0 0 --size 20 20 20 --approve-dock --yes
 
+# 独立 MD（不进 REINVENT Executor；另需 --approve-md；默认短 em-nvt，不是 100 ns）
+python -m tools.md \
+  --project projects/demo_project \
+  --structure input/md/system.gro \
+  --topology input/md/system.top \
+  --protocol em-nvt --nsteps 50 --approve-md --yes
+
 # 离线分析 bundled CSV
 python main.py --project projects/demo_project --goal "Offline" \
   --skip-reinvent --csv projects/demo_project/output/sampled-sample.csv
@@ -299,7 +319,7 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 - 无人值守写论文、自动“发现药物”
 - 自动 `pip/conda install`
 - 模型改写 `reinvent.toml`
-- PubMed、ChEMBL 下载、GROMACS/MD（独立 Research / MD 模块之前）
+- PubMed、ChEMBL 下载、生产时长 GROMACS / MM-PBSA（独立 Research / 生产 MD 模块之前）
 - CrewAI / LangGraph / LlamaIndex / 多 agent 对话框架
 - 把 LLM 输出当命令执行
 

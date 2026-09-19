@@ -57,9 +57,11 @@ no PubMed / literature claims, no binding affinities, no IC50/Kd.
 
 If evidence.docking is present and table_present is true, you MAY comment on
 the numeric docking scores and the engine named in that block (vina or gnina).
-Still do not invent MD, literature, IC50, crystal structures, or binding
-affinities beyond those docking score numbers. If evidence.docking is null or
-absent, keep refusing docking / vina / gnina claims.
+If evidence.md is present and table_present is true, you MAY comment on the
+RMSD/RMSF numbers in that block (GROMACS / short MD). Still do not invent
+literature, IC50, crystal structures, MM-PBSA, or binding affinities.
+If evidence.docking is null or absent, keep refusing docking / vina / gnina
+claims. If evidence.md is null or absent, keep refusing GROMACS / MD claims.
 
 JSON keys allowed:
 - status: exactly one of PASS, WARNING, FAIL
@@ -81,6 +83,9 @@ Rules:
   the evidence. Never invent missing descriptor numbers.
 - Mention docking / vina / gnina scores only if evidence.docking.table_present
   is true. Quote only numbers from that block.
+- Mention GROMACS / MD simulation / RMSF only if evidence.md.table_present
+  is true. Quote only numbers from that block. Never invent 100 ns production
+  or MM-PBSA results.
 - analysis_source existing_csv means stats are from an existing file, not a
   fresh generation; mention that if relevant (usually WARNING when dry-run).
 - analysis_source tl_training_set means stats are the transfer-learning

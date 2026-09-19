@@ -27,9 +27,10 @@ Critic  ── deterministic (default) ──► {status, issues, recommendation
 
 The LLM is a **critic only**. It does not call tools, does not write files,
 does not talk to other agents, and does not invent docking / MD / literature
-results unless a docking score table is already in the evidence JSON. Its
+results unless the matching evidence table is already in the JSON. Its
 output is JSON that must pass `agents/critic_schema.py` before
-the HTML report or process exit code sees it.
+the HTML report or process exit code sees it. MD metrics are allowed only
+when `evidence.md.table_present` is true (independent MD module).
 
 | Component | Role in Phase 3 |
 |-----------|-----------------|
@@ -64,6 +65,8 @@ Unknown keys, empty recommendations, shell-like text, and claims about
 docking / GROMACS / PubMed / binding affinities that are **not** in the
 evidence JSON are rejected. Docking score comments are allowed only when
 `evidence.docking.table_present` is true (independent docking module).
+MD / RMSF comments are allowed only when `evidence.md.table_present` is
+true (independent MD module).
 
 ### What the model is allowed to see
 
@@ -77,6 +80,7 @@ evidence JSON are rejected. Docking score comments are allowed only when
 - inventory csv_count
 - analysis counts, duplicate fraction, RDKit summary stats (incl. SA / PAINS / filters when present), `analysis_source`
 - optional `docking` block (engine, score table summary) **only** when the docking module attached one
+- optional `md` block (protocol, RMSD/RMSF table summary) **only** when the MD module attached one
 - critic numeric thresholds
 
 It does **not** send SMILES lists, CSV contents, HTML, or stdout dumps.
@@ -90,7 +94,8 @@ These invariants are unchanged and are enforced again on the LLM path:
    Issues / recommendation are report strings only.
 3. The critic does **not** call tools. No REINVENT, no analysis re-run.
 4. File operations stay under the project / repo root (unchanged executor).
-5. No auto-install, no TOML rewriting, no PubMed / docking / MD.
+5. No auto-install, no TOML rewriting, no PubMed. Docking / MD comments
+   require their own evidence tables.
 
 On invalid LLM verdict, missing API key, missing `openai` package, or
 provider error the agent **falls back to the deterministic critic** and

@@ -80,6 +80,14 @@ docking:
   default_num_modes: 1
   max_ligands: 20
 
+# Independent of the REINVENT executor. python -m tools.md only.
+# Launch still requires --approve-md. mdp files are human templates;
+# only nsteps / dt / ref_t may be overridden. default_nsteps: null → template.
+md:
+  default_protocol: em-nvt
+  default_nsteps: null
+  max_launch_nsteps: 10000
+
 reinvent:
   default_seed: 42
   executable: reinvent

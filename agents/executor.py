@@ -195,7 +195,8 @@ class ExecutionAgent:
                 results["warnings"].append(
                     f"{step} is an independent module — not part of the REINVENT "
                     "executor. Docking: python -m tools.docking (separate "
-                    "--approve-dock). MD/GROMACS is not implemented."
+                    "--approve-dock). MD: python -m tools.md (separate "
+                    "--approve-md)."
                 )
 
             else:

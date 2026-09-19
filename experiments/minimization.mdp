@@ -1,0 +1,22 @@
+; Human-written energy-minimization template (smoke-test default).
+; Not the 100 ns production run (see experiments/md.mdp).
+; Do not generate or replace this file from model output.
+; Allowlisted overrides: nsteps (dt / ref_t are unused here).
+
+integrator              = steep
+nsteps                  = 500
+emtol                   = 1000.0
+emstep                  = 0.01
+nstxout                 = 100
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 50
+nstlog                  = 50
+cutoff-scheme           = Verlet
+ns_type                 = grid
+nstlist                 = 10
+coulombtype             = cutoff
+rcoulomb                = 1.2
+rvdw                    = 1.2
+pbc                     = xyz
+constraints             = none

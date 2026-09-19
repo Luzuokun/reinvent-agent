@@ -38,6 +38,9 @@ projects/**/output/*.json
 projects/**/.agent/
 projects/**/output/docking/**
 !projects/**/output/docking/.gitkeep
+projects/**/output/md/**
+!projects/**/output/md/
+!projects/**/output/md/.gitkeep
 *.chkpt
 
 # OS / editor
