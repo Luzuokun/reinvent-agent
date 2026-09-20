@@ -31,6 +31,8 @@ results unless the matching evidence table is already in the JSON. Its
 output is JSON that must pass `agents/critic_schema.py` before
 the HTML report or process exit code sees it. MD metrics are allowed only
 when `evidence.md.table_present` is true (independent MD module).
+Literature claims are allowed only when sourced URL/PMID/DOI entries are
+in `evidence.literature`.
 
 | Component | Role in Phase 3 |
 |-----------|-----------------|
@@ -66,7 +68,10 @@ docking / GROMACS / PubMed / binding affinities that are **not** in the
 evidence JSON are rejected. Docking score comments are allowed only when
 `evidence.docking.table_present` is true (independent docking module).
 MD / RMSF comments are allowed only when `evidence.md.table_present` is
-true (independent MD module).
+true (independent MD module). PubMed / “literature shows” comments are
+allowed only when `evidence.literature` lists sourced URL/PMID/DOI
+entries (independent literature module). Inventing extra PMIDs still
+fails.
 
 ### What the model is allowed to see
 
@@ -81,6 +86,7 @@ true (independent MD module).
 - analysis counts, duplicate fraction, RDKit summary stats (incl. SA / PAINS / filters when present), `analysis_source`
 - optional `docking` block (engine, score table summary) **only** when the docking module attached one
 - optional `md` block (protocol, RMSD/RMSF table summary) **only** when the MD module attached one
+- optional `literature` block (sourced PMID/DOI/URL entries) **only** when the literature module attached sourced hits
 - critic numeric thresholds
 
 It does **not** send SMILES lists, CSV contents, HTML, or stdout dumps.
@@ -94,7 +100,8 @@ These invariants are unchanged and are enforced again on the LLM path:
    Issues / recommendation are report strings only.
 3. The critic does **not** call tools. No REINVENT, no analysis re-run.
 4. File operations stay under the project / repo root (unchanged executor).
-5. No auto-install, no TOML rewriting, no PubMed. Docking / MD comments
+5. No auto-install, no TOML rewriting. PubMed / literature comments
+   require sourced URL/PMID/DOI entries in evidence. Docking / MD comments
    require their own evidence tables.
 
 On invalid LLM verdict, missing API key, missing `openai` package, or
@@ -207,7 +214,10 @@ fixture as Phase 1.
 
 ## Out of scope (still)
 
-PubMed, MD, auto-install, rewriting TOML, CrewAI / LangGraph /
-LlamaIndex / multi-agent chat frameworks, MCP servers. Docking is an
-independent module (`python -m tools.docking`); the LLM critic may quote
-those scores only when the docking table is in evidence.
+PubMed literature search is an independent module
+(`python -m tools.literature`); the LLM critic may quote those sourced
+entries only when they are in evidence. Auto-writing papers, MD production
+runs, CrewAI / LangGraph / LlamaIndex / multi-agent chat frameworks, and
+MCP expansion remain out of scope. Docking is an independent module
+(`python -m tools.docking`); the LLM critic may quote those scores only
+when the docking table is in evidence.

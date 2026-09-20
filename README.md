@@ -3,7 +3,16 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
-**v0.10 scope:** same pipeline as v0.9, plus an **independent GROMACS MD
+**v0.11 scope:** same pipeline as v0.10, plus an **independent PubMed
+literature tool** (`python -m tools.literature`) that returns only entries
+with URL and/or PMID (or DOI). Missing network is a loud failure, not fake
+citations. Critic still refuses unsourced “literature shows…”. This repo
+adds stable tool ids and a small Handbook tutorial-section ↔ tool-id table
+(`python -m tools.handbook_map`); it does **not** copy
+[AI-Drug-Discovery-Lab](https://github.com/Luzuokun/ai-drug-discovery-lab).
+See [docs/literature.md](docs/literature.md) and
+[docs/handbook-tools.md](docs/handbook-tools.md).
+**v0.10** added an **independent GROMACS MD
 module** (`python -m tools.md`). Minimization and/or short NVT, RMSD/RMSF
 tables under `output/md/`. Separate `--approve-md` and MD env checks — `gmx`
 is **not** a REINVENT executor step. Human mdp templates only; allowlisted
@@ -82,8 +91,9 @@ ln -sf \
 bundled `input/tl_train.smi`). The artefact is a model checkpoint, not a new
 molecule CSV.
 
-**Research vs Chemistry:** literature / ChEMBL download belongs to a future
-Research tool (not implemented here). Local SMILES cleaning is
+**Research vs Chemistry:** literature search is the independent tool
+`python -m tools.literature` (PubMed; sourced URL/PMID/DOI only; not a
+Planner step). Local SMILES cleaning is
 `python -m tools.smiles_prep` (no network; not a Planner step). Running the
 predefined TL TOML is the existing Chemistry / REINVENT executor.
 
@@ -291,6 +301,36 @@ Without `--approve-md` the module checks paths, env, and materializes mdp
 files and does **not** launch `gmx`. `--approve-run` / `--approve-dock`
 never start MD.
 
+### Independent literature (`python -m tools.literature`)
+
+Not a Planner/Executor/MCP step. Separate `--approve-literature`. Queries
+NCBI PubMed E-utilities and keeps **only** entries with URL and/or PMID
+(or DOI). Missing network is a loud `NETWORK FAILURE`, not fabricated
+citations. The critic may mention PubMed / “literature shows” only when
+those sourced entries are in the evidence JSON. This module does **not**
+write papers. Details: [docs/literature.md](docs/literature.md).
+
+```bash
+python -m tools.literature \
+  --project projects/demo_project \
+  --query "EGFR tyrosine kinase inhibitor" \
+  --retmax 10 \
+  --approve-literature --yes
+```
+
+Without `--approve-literature` the module checks the query and does **not**
+hit NCBI. `--approve-run` never starts a literature search.
+
+### Handbook tool-id mapping (`python -m tools.handbook_map`)
+
+Stable tool ids plus a small tutorial-section ↔ tool-id table. Tutorial
+prose stays in the Handbook repo. Details:
+[docs/handbook-tools.md](docs/handbook-tools.md).
+
+```bash
+python -m tools.handbook_map
+```
+
 ### MCP server (optional)
 
 Same eight allowlisted tools as the planner, over stdio. No shell tool.
@@ -440,6 +480,16 @@ Run from the repo root with `conda activate reinvent4`.
    Expect: env/path/mdp check only; `gmx` **not** launched; no `rmsd.csv`;
    Critic `WARNING`; exit `0`. `python main.py` still does not call gmx.
 
+9. **Literature dry-run (no `--approve-literature`)**
+   ```bash
+   python -m tools.literature \
+     --project projects/demo_project \
+     --query "EGFR tyrosine kinase inhibitor"
+   ```
+   Expect: query check only; **no** NCBI call; no `entries.csv`; Critic
+   `WARNING`; exit `0`. No invented PMIDs. `python main.py` still does not
+   search PubMed.
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -452,6 +502,8 @@ Run from the repo root with `conda activate reinvent4`.
 8. Optional LLM critic is evidence-only: no tools, no shell, no invented
    literature. Docking scores may be mentioned only when a docking table is
    in the evidence JSON. MD metrics only when an MD table is in the evidence.
+   PubMed / “literature shows” only when sourced URL/PMID/DOI entries are
+   in the evidence.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
 11. `--from-run` copies CLI identity only. It never copies `--approve-run` /
@@ -461,6 +513,10 @@ Run from the repo root with `conda activate reinvent4`.
 13. MD is `python -m tools.md` with `--approve-md`. mdp files are human
     templates; the model cannot emit a full mdp. Production 100 ns is not
     the default and is not launched by this module.
+14. Literature is `python -m tools.literature` with `--approve-literature`.
+    It returns only sourced entries and does not write papers. Missing
+    network is a loud failure. Handbook mapping is
+    `python -m tools.handbook_map` (ids only; no copied tutorials).
 
 ## Relation to other projects
 
@@ -474,11 +530,11 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / docking / md / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / md / literature / handbook_map / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets and GROMACS mdp templates (never model-authored)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
-docs/            Phase design notes (md.md, docking.md, from-run.md, experiment-presets.md, mcp-tools.md, …)
+docs/            Phase design notes (literature.md, handbook-tools.md, md.md, docking.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

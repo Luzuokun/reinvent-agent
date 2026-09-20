@@ -34,7 +34,8 @@ run N+1: python main.py --from-run <id> [--preset …] --approve-run
 | Executor | Unchanged: one pass over the plan; no retry loop |
 | MCP | Unchanged. Rerun is CLI / human first. |
 
-No docking, MD, literature, new agent framework, or arbitrary shell.
+No docking, MD, or literature is copied into a rerun. Those stay
+independent CLIs. No new agent framework, no arbitrary shell.
 
 ## What is copied
 

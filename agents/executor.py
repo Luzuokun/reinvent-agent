@@ -16,8 +16,8 @@ from tools.reinvent import find_output_files, run_reinvent
 
 logger = logging.getLogger(__name__)
 
-# Docking / MD live in their own modules with their own human approval.
-# Naming them here refuses sneaking vina/gmx into the REINVENT loop.
+# Docking / MD / literature live in their own modules with their own approval.
+# Naming them here refuses sneaking vina/gmx/pubmed into the REINVENT loop.
 INDEPENDENT_MODULE_STEPS = frozenset(
     {
         "docking",
@@ -31,6 +31,13 @@ INDEPENDENT_MODULE_STEPS = frozenset(
         "gromacs",
         "md",
         "run_md",
+        "literature",
+        "research",
+        "pubmed",
+        "search_literature",
+        "run_literature",
+        "write_paper",
+        "write_manuscript",
     }
 )
 
@@ -196,7 +203,8 @@ class ExecutionAgent:
                     f"{step} is an independent module — not part of the REINVENT "
                     "executor. Docking: python -m tools.docking (separate "
                     "--approve-dock). MD: python -m tools.md (separate "
-                    "--approve-md)."
+                    "--approve-md). Literature: python -m tools.literature "
+                    "(separate --approve-literature). This loop does not write papers."
                 )
 
             else:

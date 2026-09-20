@@ -63,5 +63,6 @@ charts. LLM critic tests remain mocked.
 
 ## Out of scope
 
-MCP, docking, MD, literature, experiment preset IDs, rewriting `reinvent.toml`,
+MCP, experiment preset IDs, rewriting `reinvent.toml`,
 and any Agent framework (Agents SDK / LangGraph / CrewAI).
+Docking / MD / literature are independent modules documented separately.

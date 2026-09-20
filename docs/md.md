@@ -49,8 +49,9 @@ Critic  (only if that md object is in the evidence JSON)
 | Executor / planner allowlist / MCP | Unchanged: no `gmx`, no `run_md` |
 | Critic | May mention MD **metrics** only when `evidence.md.table_present` |
 
-No LLM-written TOML, no arbitrary shell, no literature (Phase 7), no
-MM-PBSA. Production 100 ns is checked in as a human template, not launched.
+No LLM-written TOML, no arbitrary shell, no MM-PBSA. Production 100 ns is
+checked in as a human template, not launched. Literature search is
+`python -m tools.literature` (Phase 7).
 
 ## Templates
 
@@ -120,7 +121,8 @@ payload with an `md` object and runs the deterministic critic.
 - If `evidence.md.table_present` is true, the critic may quote the numeric
   RMSD/RMSF values in that block.
 - Docking / PubMed / IC50 / MM-PBSA / binding-affinity claims stay
-  forbidden unless their own evidence tables are present.
+  forbidden unless their own evidence tables (sourced literature entries
+  for PubMed) are present.
 
 ## Safety
 
@@ -151,5 +153,6 @@ they do not launch 100 ns. If `gmx` / `gmx_mpi` are on PATH, a small
 ## Out of scope
 
 Production-length MD, NPT continuation as a runnable protocol, MM-PBSA,
-`pdb2gmx` / solvation / ions, literature search, MCP MD tools, LLM-written
+`pdb2gmx` / solvation / ions, MCP MD tools, LLM-written
 mdp/TOML, adding `gmx` to the REINVENT Executor loop.
+Literature search is `python -m tools.literature`, not this module.

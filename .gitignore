@@ -41,6 +41,9 @@ projects/**/output/docking/**
 projects/**/output/md/**
 !projects/**/output/md/
 !projects/**/output/md/.gitkeep
+projects/**/output/literature/**
+!projects/**/output/literature/
+!projects/**/output/literature/.gitkeep
 *.chkpt
 
 # OS / editor

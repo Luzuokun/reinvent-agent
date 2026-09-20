@@ -45,7 +45,9 @@ Critic  (only if that docking object is in the evidence JSON)
 | Executor / planner allowlist / MCP | Unchanged: no `run_vina`, no `gmx` |
 | Critic | May mention docking **scores** only when `evidence.docking.table_present` |
 
-No LLM-written TOML, no arbitrary shell, no literature (Phase 7). MD is a
+No LLM-written TOML, no arbitrary shell. Literature search is a
+separate module (`python -m tools.literature`); see
+[docs/literature.md](literature.md). MD is a
 separate module (`python -m tools.md`, `--approve-md`); see
 [docs/md.md](md.md).
 
@@ -103,7 +105,8 @@ results payload with a `docking` object and runs the deterministic critic.
   is schema-rejected (same as before).
 - If `evidence.docking.table_present` is true, the critic may quote the
   numeric scores and the engine named in that block.
-- MD / PubMed / IC50 / binding-affinity claims stay forbidden.
+- MD / PubMed / IC50 / binding-affinity claims stay forbidden unless their
+  own evidence tables (sourced literature entries for PubMed) are present.
 
 ## Safety
 
@@ -130,4 +133,4 @@ Tests mock Vina. They do not need GPU, network, or a docking binary. If
 
 Literature search, MCP docking tools, LLM-written box/TOML, rewriting
 `reinvent.toml`, adding vina to the REINVENT Executor loop. GROMACS is
-`python -m tools.md`, not this module.
+`python -m tools.md`. PubMed is `python -m tools.literature`.

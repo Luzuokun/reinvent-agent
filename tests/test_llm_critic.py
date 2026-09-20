@@ -280,6 +280,46 @@ def test_llm_critic_md_metrics_allowed_when_table_present():
     assert verdict["status"] == "PASS"
 
 
+def test_llm_critic_sourced_literature_allowed_when_entries_present():
+    results = {
+        "plan": {"approve_run": False, "skip_reinvent": True, "steps": ["literature"]},
+        "steps": {
+            "literature": {
+                "ok": True,
+                "approved": True,
+                "skipped": False,
+                "source": "pubmed",
+                "table_present": True,
+                "entries_csv": "output/literature/entries.csv",
+                "n_entries": 1,
+                "entries": [
+                    {
+                        "pmid": "12345678",
+                        "doi": "10.1000/test.doi",
+                        "url": "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+                    }
+                ],
+            }
+        },
+        "warnings": [],
+        "errors": [],
+    }
+
+    def complete(_messages):
+        return json.dumps(
+            {
+                "status": "PASS",
+                "issues": ["Literature table lists PMID 12345678 from PubMed."],
+                "recommendation": "Human review of the sourced entries is recommended.",
+            }
+        )
+
+    verdict = _agent(complete_fn=complete).review(results)
+    assert verdict["critic"] == "llm"
+    assert verdict["critic_fallback"] is False
+    assert verdict["status"] == "PASS"
+
+
 def test_llm_critic_invented_md_claim_falls_back():
     def complete(_messages):
         return json.dumps(
@@ -293,6 +333,24 @@ def test_llm_critic_invented_md_claim_falls_back():
     verdict = _agent(complete_fn=complete).review(PASSING_RESULTS)
     assert verdict["critic_fallback"] is True
     assert any("invented" in w or "GROMACS" in w or "out-of-scope" in w for w in verdict["critic_warnings"])
+
+
+def test_llm_critic_invented_literature_claim_falls_back():
+    def complete(_messages):
+        return json.dumps(
+            {
+                "status": "PASS",
+                "issues": ["Literature shows these molecules are known EGFR inhibitors."],
+                "recommendation": "Cite the papers and proceed.",
+            }
+        )
+
+    verdict = _agent(complete_fn=complete).review(PASSING_RESULTS)
+    assert verdict["critic_fallback"] is True
+    assert any(
+        "invented" in w or "literature" in w.lower() or "out-of-scope" in w
+        for w in verdict["critic_warnings"]
+    )
 
 
 def _clear_llm_keys(monkeypatch):

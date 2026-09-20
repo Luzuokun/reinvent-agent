@@ -152,6 +152,14 @@ class CriticAgent:
         if md:
             status = _review_md(md, issues=issues, status=status)
 
+        literature = (
+            steps.get("literature") if isinstance(steps.get("literature"), dict) else None
+        )
+        if literature is None and isinstance(results.get("literature"), dict):
+            literature = results["literature"]
+        if literature:
+            status = _review_literature(literature, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -290,5 +298,65 @@ def _review_md(
         detail += f", rmsd_mean={mean}"
     issues.append(
         f"MD table present ({detail}, protocol={md.get('protocol')}, engine=gmx)"
+    )
+    return status
+
+
+def _review_literature(
+    literature: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate literature evidence when the independent research tool attached one.
+
+    Called only if the literature module put a ``literature`` object on the
+    results. REINVENT-only runs never hit this branch, so "literature shows"
+    stays forbidden unless sourced URL/PMID/DOI entries are present.
+    """
+    approved = bool(literature.get("approved"))
+    skipped = bool(literature.get("skipped"))
+    entries = literature.get("entries") if isinstance(literature.get("entries"), list) else []
+    sourced_n = 0
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        pmid = str(item.get("pmid") or "").strip()
+        doi = str(item.get("doi") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if pmid.isdigit() or doi or url.startswith("http://") or url.startswith("https://"):
+            sourced_n += 1
+    table_present = bool(literature.get("table_present") and sourced_n > 0)
+    errors = literature.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "Literature was not fetched (pass --approve-literature to query PubMed). "
+            "No citations were invented."
+        )
+        return status
+
+    if literature.get("ok") is False or errors:
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(literature.get("message") or "Literature search failed")
+        issues.append("Refusing unsourced literature claims; network failure is not a citation.")
+        return status
+
+    if not table_present:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "PubMed returned no sourced hits (URL/PMID/DOI required). "
+            "Do not treat this as a literature review."
+        )
+        return status
+
+    issues.append(
+        f"Literature table present (n={sourced_n} sourced PubMed entries with URL/PMID/DOI)"
     )
     return status

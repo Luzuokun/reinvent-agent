@@ -38,7 +38,8 @@ Executor  run_reinvent(<project>/.agent/<id>.toml)   still needs --approve-run
 | `agents/executor.py` | Uses the materialized preset TOML when `preset_id` is set |
 | MCP | **Unchanged.** Presets are CLI / planner first. |
 
-No docking, MD, literature, new agent framework, or arbitrary shell.
+No new agent framework, no arbitrary shell. Docking / MD / literature are
+independent CLIs and are not selected by a preset ID.
 
 ## Allowed preset IDs
 
@@ -91,7 +92,7 @@ whatever the model returned.
 4. `scaffold_path` uses the same resolve + `relative_to(input_dir)` rule as
    plan `csv_path` under `output/`.
 5. No MCP expansion for presets (prefer CLI / planner).
-6. No docking, MD, literature, or new agent framework.
+6. No new agent framework. Docking / MD / literature stay independent CLIs.
 
 ## How to run
 

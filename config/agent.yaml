@@ -88,6 +88,14 @@ md:
   default_nsteps: null
   max_launch_nsteps: 10000
 
+# Independent of the REINVENT executor. python -m tools.literature only.
+# Network fetch still requires --approve-literature (not --approve-run).
+# Never invents papers; missing network is a loud failure.
+literature:
+  default_retmax: 10
+  max_retmax: 50
+  timeout_seconds: 20
+
 reinvent:
   default_seed: 42
   executable: reinvent

@@ -1,4 +1,7 @@
-"""Local SMILES prep for transfer learning — no network, no literature.
+"""Local SMILES prep for transfer learning — no network.
+
+Not a literature search (see ``python -m tools.literature``) and not a
+Planner step. PI / humans call this CLI on local CSV/SMI files.
 
 Reads an existing CSV or .smi already on disk, RDKit-canonicalizes, drops
 invalid rows, deduplicates, and writes a training ``.smi`` under the project.

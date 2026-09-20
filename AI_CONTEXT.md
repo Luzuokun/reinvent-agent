@@ -1,7 +1,7 @@
 # AI_CONTEXT.md
 
 Living context for [reinvent-agent](https://github.com/Luzuokun/reinvent-agent).  
-Last updated: **2026-09-19**.
+Last updated: **2026-09-20**.
 
 This file is for humans and coding agents. Prefer it over reconstructing intent from chat history.
 
@@ -35,13 +35,13 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：MD 独立模块（v0.10）。** `tools/md/` 是目录级 tool：从人写 mdp 模板物化参数、短最小化/NVT、RMSD/RMSF 表写入 `<project>/output/md/`。单独人批（`--approve-md`）与单独环境检查（`gmx` / `gmx_mpi`），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 md / gmx 步骤。Critic 只有在 evidence JSON 里出现 MD 表时才允许评论 RMSD/RMSF，否则继续拒绝 GROMACS 声称。mdp 与 TOML 相同：只用人工模板，允许改的标量仅限 `nsteps` / `dt` / `ref_t`。没有 LLM 写的 TOML/mdp、没有任意 shell、没有文献 / MM-PBSA，不引入新 Agent 框架。默认协议是 `em-nvt` 烟测，不是 100 ns 生产（`experiments/md.mdp` 已入库但不启动）。
+**当前：文献独立模块 + Handbook tool-id 映射（v0.11）。** `tools/literature/` 是目录级 tool：人给 PubMed 检索式，只返回带 URL 和/或 PMID（或 DOI）的条目，写入 `<project>/output/literature/`。单独人批（`--approve-literature`），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 literature / pubmed / write_paper 步骤。缺网是大声 `NETWORK FAILURE`，不编造论文。Critic 只有在 evidence JSON 里出现**带出处**的文献条目时才允许评论 PubMed /「文献表明」；编造额外 PMID 仍拒绝。Handbook（`AI-Drug-Discovery-Lab`）仍是相邻仓库：本仓只加稳定 tool id 与教程章节 ↔ tool id 对照表（`tools/handbook_map.py`），不复制教程正文。没有 LLM 写的 TOML/mdp、没有任意 shell、没有自动写论文、不引入新 Agent 框架。对接与短 MD 行为不变。
 
-- `python -m tools.md`：唯一会启动 GROMACS 的入口；预定义 argv，`shell=False`，CPU `mdrun`。
-- 结构与拓扑必须已在 `<project>/input/`；产物只写 `output/md/`。
-- REINVENT 的 `check_environment` **不**探测 gmx。
-- `--from-run` / 人写预设 / MCP / 对接模块行为不变。启动 REINVENT 仍要 `--approve-run`；对接仍要 `--approve-dock`。
-- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上文献。
+- `python -m tools.literature`：唯一会访问 NCBI E-utilities 的入口；预定义 HTTPS host，`shell=False`。
+- 产物只写 `output/literature/`。无出处记录直接丢弃。
+- REINVENT 的 `check_environment` **不**探测 PubMed。
+- `--from-run` / 人写预设 / MCP / 对接 / MD 行为不变。启动 REINVENT 仍要 `--approve-run`；对接仍要 `--approve-dock`；MD 仍要 `--approve-md`。
+- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上 SaaS/Web UI。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
@@ -78,6 +78,8 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `--critic {deterministic,llm}`；`docs/phase3-llm-critic.md`
 - evidence-only；docking/MD/文献等无证据声称会被 schema 拒绝并 fallback
 - 有 docking 分数表时允许评论该表上的分数；否则继续拒绝
+- 有 MD 表时允许评论 RMSD/RMSF；否则继续拒绝
+- 有带 URL/PMID/DOI 的文献条目时允许评论这些出处；否则继续拒绝「文献表明」
 
 ### 多 provider LLM（openai / xai / gemini / openai_compatible）
 
@@ -146,10 +148,21 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 - `docs/md.md`；测试 mock gmx，缺二进制则 skip，不依赖 GPU / 网络，不跑 100 ns
 - MCP 不增加 md / gmx tool
 
+### 文献独立模块与 Handbook 映射（v0.11）
+
+- `tools/literature/`：PubMed E-utilities 客户端 / 出处过滤 / CLI；`python -m tools.literature`
+- 单独 `--approve-literature`；Executor 遇到 `literature` / `pubmed` / `write_paper` 会拒绝并警告
+- 只保留带 URL 和/或 PMID 和/或 DOI 的条目；缺网 → `NETWORK FAILURE`，不编造论文
+- 表：`<project>/output/literature/entries.csv`；不写 manuscript
+- Critic：`evidence.literature` 里有带出处条目才允许评论 PubMed /「文献表明」；额外 PMID 仍拒绝
+- `tools/handbook_map.py`：稳定 tool id + 教程章节 ↔ tool id；不复制 Handbook 正文
+- `docs/literature.md`、`docs/handbook-tools.md`；测试 mock NCBI，不依赖 GPU / 网络 / API key
+- MCP 不增加 literature / pubmed tool
+
 ### 测试与文档
 
-- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run、docking、md
-- `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU
+- `tests/`：offline、v0.2 artifacts、plan schema、LLM planner、LLM critic、LLM client/providers、executor 安全、MCP allowlist、TL project、envfile、smiles_prep、experiment presets、from-run、docking、md、literature、handbook_map
+- `python -m pytest tests/ -q` 不需要 API key / 不需要 GPU / 不访问 NCBI
 
 ---
 
@@ -157,7 +170,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 1. **Agent 可靠性 / scientific bullshit**  
    模型仍可能把计数讲成“发现了药”。Planner/Critic 用 schema + fallback 压风险，但不能替代人读报告。
-2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。`vina` / `gnina` / `gmx` 同样：对接与 MD 模块单独检查，不自动安装，也不混进 REINVENT 环境探测。
+2. **`reinvent` 不在 PATH**，直到 `conda activate reinvent4`。环境检查会如实报缺失，不会自动安装。`vina` / `gnina` / `gmx` 同样：对接与 MD 模块单独检查，不自动安装，也不混进 REINVENT 环境探测。文献模块不探测 NCBI，直到 `--approve-literature`。
 3. **Dry-run 分析陈旧 CSV** 容易让人以为刚生成了一批分子。v0.2 已标注；仍需在 UI/文档里盯着。
 4. **LLM 依赖 provider / API key**。缺 key 时默认 fallback，不是静默编造 plan/verdict。未装 `openai` 包同样 fallback。可用 xAI / Gemini / 任意 OpenAI-compatible 端点，不必绑死 OpenAI 配额。`ALL_PROXY=socks://...` 会被跳过并改用 `HTTP(S)_PROXY`。
 5. **GPU 作业需要人批准**。本 MVP 的 demo 是 CPU sampling；真 GPU 工作流不自动开跑。
@@ -176,7 +189,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Never LLM → shell | 模型文本不进 `subprocess`、不进 argv |
 | Human approve for reinvent | `--approve-run` + 确认 / `--yes` |
 | Planner / Executor / Critic 分离 | 计划、执行、评价三条边界；Phase 3 只加 Critic 的 LLM 层 |
-| Narrow MVP | 文献仍独立模块之后再做；对接与短 MD 已是独立 tool，不进 REINVENT Executor |
+| Narrow MVP | 文献 / 对接 / 短 MD 已是独立 tool，不进 REINVENT Executor；不上 10 Agent |
 | Fallback on LLM failure | 默认回退确定性实现并大声警告；`fallback_on_error: false` 才 hard-fail（exit 2） |
 | Multi-provider LLM | 一个 OpenAI-compatible 客户端；provider 由 yaml / `--provider` / env 选择，不把单一厂商写进 Planner/Critic |
 | MCP wraps existing tools | 新入口（Cursor 等），不新能力；tool 名 = planner allowlist；无 shell |
@@ -184,18 +197,20 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | HITL rerun, never agent loop | `--from-run` 只复制 CLI 身份；人改参数后再次调用；Executor 不循环、不改 TOML |
 | Docking is a separate module | `--approve-dock` ≠ `--approve-run`；vina/gnina 不进 Planner/MCP allowlist |
 | MD is a separate module | `--approve-md` ≠ `--approve-run`；gmx 不进 Planner/MCP allowlist；mdp 只许改白名单标量 |
+| Literature is a separate module | `--approve-literature` ≠ `--approve-run`；只返回带 URL/PMID/DOI 的条目；缺网大声失败；不写论文 |
+| Handbook mapping, not a copy | 本仓只维护稳定 tool id 与教程章节对照表；教程正文在 AI-Drug-Discovery-Lab |
 
 ---
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、以及 **MD 独立模块（GROMACS 短链）** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、MD 独立模块（GROMACS 短链）、以及 **文献独立模块 + Handbook tool-id 映射** 已落地。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
-1. **Research tool**（文献 / ChEMBL 下载）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl
+1. **ChEMBL 下载**（仍独立 Research tool）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl
 2. 用 TL 后的 checkpoint 再跑 sampling project（TL → sample 两段，仍不许模型改 TOML）
 3. 更丰富的过滤 / 导出（仍基于已有 CSV）
 4. 生产时长 MD / NPT / MM-PBSA（仍独立 tool，另批）
-5. 与 handbook（AI-Drug-Discovery-Lab）的链接：教程 ↔ 可运行 tool
+5. 在 Handbook 仓消费本仓 tool-id 表（本仓不复制教程）
 
 明确不做：用 chat 框架替换当前管线；让模型改写 `reinvent.toml`；无人值守“自动发现药物”。
 
@@ -214,7 +229,7 @@ agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
-tools/                     environment / files / reinvent / smiles_prep / docking / md / analysis / artifacts / MCP allowlist
+tools/                     environment / files / reinvent / smiles_prep / docking / md / literature / handbook_map / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
 experiments/               人写 REINVENT 预设 TOML 与 GROMACS mdp 模板
 projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` 与 `input/md/` 夹具
@@ -223,6 +238,8 @@ config/agent.yaml          planner / critic / 路径 / 阈值
 docs/from-run.md
 docs/docking.md
 docs/md.md
+docs/literature.md
+docs/handbook-tools.md
 docs/experiment-presets.md
 docs/mcp-tools.md
 docs/phase2-llm-planner.md
@@ -291,6 +308,15 @@ python -m tools.md \
   --topology input/md/system.top \
   --protocol em-nvt --nsteps 50 --approve-md --yes
 
+# 独立文献（不进 REINVENT Executor；另需 --approve-literature；只返回带出处条目）
+python -m tools.literature \
+  --project projects/demo_project \
+  --query "EGFR tyrosine kinase inhibitor" \
+  --retmax 10 --approve-literature --yes
+
+# Handbook 对照表（不复制教程）
+python -m tools.handbook_map
+
 # 离线分析 bundled CSV
 python main.py --project projects/demo_project --goal "Offline" \
   --skip-reinvent --csv projects/demo_project/output/sampled-sample.csv
@@ -318,8 +344,9 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 - 任意 / 未 allowlist 的 shell（含 MCP 入口）
 - 无人值守写论文、自动“发现药物”
 - 自动 `pip/conda install`
-- 模型改写 `reinvent.toml`
-- PubMed、ChEMBL 下载、生产时长 GROMACS / MM-PBSA（独立 Research / 生产 MD 模块之前）
+- 模型改写 `reinvent.toml` 或整份 mdp
+- ChEMBL 下载、生产时长 GROMACS / MM-PBSA（独立模块另批）
+- 把 Handbook 教程复制进本仓
 - CrewAI / LangGraph / LlamaIndex / 多 agent 对话框架
 - 把 LLM 输出当命令执行
 

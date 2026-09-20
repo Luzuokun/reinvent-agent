@@ -9,7 +9,9 @@ Client construction is centralized in ``agents.llm_client`` (openai / xai /
 gemini / openai_compatible).
 
 The model sees a compact evidence summary only. It does not call tools,
-run REINVENT, or invent docking / MD / literature claims.
+run REINVENT, or invent docking / MD / literature claims. Unsourced
+"literature shows…" sentences are rejected unless evidence contains
+sourced URL/PMID/DOI entries.
 
 On missing API key, invalid verdict, or provider error the default is to
 fall back to the deterministic critic with a loud warning (resilience).
@@ -54,14 +56,20 @@ You do not modify files. You do not call REINVENT.
 You review structured workflow evidence only. Do not invent experiments
 that are not in the evidence: no docking, no molecular dynamics / GROMACS,
 no PubMed / literature claims, no binding affinities, no IC50/Kd.
+Never write or draft papers.
 
 If evidence.docking is present and table_present is true, you MAY comment on
 the numeric docking scores and the engine named in that block (vina or gnina).
 If evidence.md is present and table_present is true, you MAY comment on the
 RMSD/RMSF numbers in that block (GROMACS / short MD). Still do not invent
 literature, IC50, crystal structures, MM-PBSA, or binding affinities.
+If evidence.literature is present and table_present is true, you MAY mention
+those sourced PubMed entries (PMID / DOI / URL listed in that block only).
+Never invent papers, PMIDs, or "literature shows…" claims beyond that list.
 If evidence.docking is null or absent, keep refusing docking / vina / gnina
 claims. If evidence.md is null or absent, keep refusing GROMACS / MD claims.
+If evidence.literature is null or table_present is false, keep refusing
+PubMed / literature / PMID claims.
 
 JSON keys allowed:
 - status: exactly one of PASS, WARNING, FAIL
@@ -86,6 +94,9 @@ Rules:
 - Mention GROMACS / MD simulation / RMSF only if evidence.md.table_present
   is true. Quote only numbers from that block. Never invent 100 ns production
   or MM-PBSA results.
+- Mention PubMed / literature / PMID only if evidence.literature.table_present
+  is true. Quote only PMIDs, DOIs, and URLs listed in that block. Never
+  invent papers. Never draft a manuscript.
 - analysis_source existing_csv means stats are from an existing file, not a
   fresh generation; mention that if relevant (usually WARNING when dry-run).
 - analysis_source tl_training_set means stats are the transfer-learning

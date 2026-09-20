@@ -43,6 +43,9 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "md simulation",
     "pubmed",
     "literature review",
+    "literature shows",
+    "literature",
+    "pmid",
     "binding affinity",
     "ic50",
     "crystal structure",
@@ -66,6 +69,24 @@ MD_CLAIM_TERMS: frozenset[str] = frozenset(
         "rmsf",
     }
 )
+
+# These may appear only when evidence.literature has sourced URL/PMID/DOI entries.
+LITERATURE_CLAIM_TERMS: frozenset[str] = frozenset(
+    {
+        "pubmed",
+        "literature review",
+        "literature shows",
+        "literature",
+        "pmid",
+    }
+)
+
+_PMID_MENTION = re.compile(r"\bpmid[:\s#]*(\d{5,9})\b", re.IGNORECASE)
+_PUBMED_URL_PMID = re.compile(
+    r"pubmed\.ncbi\.nlm\.nih\.gov/(\d{5,9})",
+    re.IGNORECASE,
+)
+_DOI_MENTION = re.compile(r"\b(10\.\d{4,9}/[^\s,;]+)", re.IGNORECASE)
 
 _SHELLISH = re.compile(
     r"(sudo\s|rm\s+-|chmod\s|curl\s|wget\s|bash\s+-|/bin/sh|subprocess|shell=True)",
@@ -136,6 +157,9 @@ def build_evidence_summary(
     md = steps.get("md") if isinstance(steps.get("md"), dict) else {}
     if not md and isinstance(results.get("md"), dict):
         md = results["md"]
+    literature = steps.get("literature") if isinstance(steps.get("literature"), dict) else {}
+    if not literature and isinstance(results.get("literature"), dict):
+        literature = results["literature"]
 
     command = run.get("command")
     if not isinstance(command, list):
@@ -218,6 +242,9 @@ def build_evidence_summary(
     md_block = _md_block(md)
     if md_block:
         summary["md"] = md_block
+    literature_block = _literature_block(literature)
+    if literature_block:
+        summary["literature"] = literature_block
     return summary
 
 
@@ -264,6 +291,7 @@ def validate_critic_verdict(
 
     _reject_shellish(issues, recommendation)
     _reject_ungrounded_claims(issues, recommendation, evidence or {})
+    _reject_invented_citations(issues, recommendation, evidence or {})
 
     seen: set[str] = set()
     unique_issues: list[str] = []
@@ -318,6 +346,7 @@ def _reject_ungrounded_claims(
     blob = (" ".join(issues) + " " + recommendation).lower()
     docking_ok = _has_docking_table(evidence)
     md_ok = _has_md_table(evidence)
+    literature_ok = _has_sourced_literature(evidence)
     invented: list[str] = []
     for term in FORBIDDEN_CLAIM_TERMS:
         if term not in blob:
@@ -329,6 +358,11 @@ def _reject_ungrounded_claims(
             continue
         if term in MD_CLAIM_TERMS:
             if not md_ok or term not in evidence_text:
+                invented.append(term)
+            continue
+        if term in LITERATURE_CLAIM_TERMS:
+            # Need sourced URL/PMID/DOI entries, not just a literature step name.
+            if not literature_ok or term not in evidence_text:
                 invented.append(term)
             continue
         if term not in evidence_text:
@@ -361,6 +395,59 @@ def _has_md_table(evidence: dict[str, Any]) -> bool:
         or md.get("rmsf_csv")
         or (isinstance(md.get("rmsd"), dict) and md.get("n_frames"))
     )
+
+
+def _has_sourced_literature(evidence: dict[str, Any]) -> bool:
+    literature = evidence.get("literature") if isinstance(evidence, dict) else None
+    if not isinstance(literature, dict) or not literature:
+        return False
+    return bool(_sourced_literature_entries(literature))
+
+
+def _sourced_literature_entries(literature: dict[str, Any]) -> list[dict[str, str]]:
+    raw = literature.get("entries") if isinstance(literature, dict) else None
+    if not isinstance(raw, list):
+        return []
+    sourced: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        pmid = str(item.get("pmid") or "").strip()
+        doi = str(item.get("doi") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if not (pmid.isdigit() or doi or url.startswith("http://") or url.startswith("https://")):
+            continue
+        sourced.append({"pmid": pmid, "doi": doi.lower().rstrip("."), "url": url})
+    return sourced
+
+
+def _reject_invented_citations(
+    issues: list[str],
+    recommendation: str,
+    evidence: dict[str, Any],
+) -> None:
+    """Reject PMIDs / DOIs in critic text that are not in sourced evidence."""
+    blob = " ".join(issues) + " " + recommendation
+    mentioned_pmids = set(_PMID_MENTION.findall(blob)) | set(_PUBMED_URL_PMID.findall(blob))
+    mentioned_dois = {item.rstrip(").,;").lower() for item in _DOI_MENTION.findall(blob)}
+    if not mentioned_pmids and not mentioned_dois:
+        return
+    literature = evidence.get("literature") if isinstance(evidence, dict) else None
+    sourced = _sourced_literature_entries(literature if isinstance(literature, dict) else {})
+    allowed_pmids = {row["pmid"] for row in sourced if row["pmid"]}
+    allowed_dois = {row["doi"] for row in sourced if row["doi"]}
+    extra_pmids = sorted(mentioned_pmids - allowed_pmids)
+    extra_dois = sorted(doi for doi in mentioned_dois if doi not in allowed_dois)
+    invented: list[str] = []
+    if extra_pmids:
+        invented.append("pmid " + ", ".join(extra_pmids))
+    if extra_dois:
+        invented.append("doi " + ", ".join(extra_dois))
+    if invented:
+        raise CriticValidationError(
+            "critic invented citations not present in sourced literature evidence: "
+            + "; ".join(invented)
+        )
 
 
 def _truncate_text(value: Any, limit: int = 400) -> str | None:
@@ -510,4 +597,46 @@ def _md_block(value: Any) -> dict[str, Any] | None:
         else None,
         "message": _truncate_text(value.get("message")),
         "errors": _truncate_str_list(value.get("errors")),
+    }
+
+
+def _literature_block(value: Any) -> dict[str, Any] | None:
+    """Include a literature summary only when the literature module attached one.
+
+    Omitting this block keeps PubMed / literature-shows / PMID claims forbidden.
+    Abstracts and full paper text are never copied here. Entries without URL,
+    PMID, or DOI are dropped so the critic cannot treat unsourced rows as evidence.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    sourced = _sourced_literature_entries(value)
+    compact = []
+    for item in sourced[:8]:
+        compact.append(
+            {
+                "pmid": item.get("pmid") or None,
+                "doi": item.get("doi") or None,
+                "url": item.get("url") or None,
+            }
+        )
+    table_present = bool(compact)
+    n_entries = len(sourced) if sourced else 0
+    return {
+        "ok": value.get("ok"),
+        "approved": value.get("approved"),
+        "skipped": value.get("skipped"),
+        "success": value.get("success"),
+        "source": "pubmed",
+        "package": "pubmed",
+        "modality": "literature",
+        "kind": "literature review",
+        "phrase": "literature shows",
+        "table_present": table_present,
+        "n_entries": n_entries if table_present else 0,
+        "entries_csv": value.get("entries_csv") if table_present else None,
+        "query": _truncate_text(value.get("query"), limit=200),
+        "entries": compact,
+        "message": _truncate_text(value.get("message")),
+        "errors": _truncate_str_list(value.get("errors")),
+        "writes_papers": False,
     }
