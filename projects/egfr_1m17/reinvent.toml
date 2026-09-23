@@ -1,0 +1,9 @@
+run_type = "sampling"
+device = "cuda"
+
+[parameters]
+model_file = "priors/reinvent.prior"
+output_file = "output/sampled.csv"
+num_smiles = 2000
+unique_molecules = true
+randomize_smiles = true

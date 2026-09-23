@@ -11,7 +11,7 @@ ALLOWED_ENGINES: tuple[str, ...] = ("vina", "gnina")
 # Hard caps so a typo cannot launch a runaway job.
 MAX_EXHAUSTIVENESS = 32
 MAX_NUM_MODES = 20
-MAX_LIGANDS = 50
+MAX_LIGANDS = 60
 MAX_BOX_SIZE = 60.0
 MIN_BOX_SIZE = 1.0
 

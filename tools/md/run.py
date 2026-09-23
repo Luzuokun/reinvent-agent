@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -18,8 +19,10 @@ from tools import dumps_pretty, load_agent_config
 from tools.md.analyze import parse_xvg, write_rmsd_csv, write_rmsf_csv, xy_stats
 from tools.md.commands import (
     ANALYSIS_TIMEOUT_SECONDS,
+    ALLOWED_ACPYPE_BINARIES,
     ALLOWED_GMX_SUBCOMMANDS,
     GROMPP_TIMEOUT_SECONDS,
+    MDRUN_TIMEOUT_MD2NS_SECONDS,
     MDRUN_TIMEOUT_SECONDS,
     RMS_STDIN,
     RMSF_STDIN,
@@ -29,7 +32,9 @@ from tools.md.commands import (
     build_rms_command,
     build_rmsf_command,
     normalize_gmx_executable,
+    normalize_nb,
 )
+from tools.md.complex import ComplexPrepError, prepare_complex
 from tools.md.environment import ALLOWED_GMX_BINARIES, check_md_environment
 from tools.md.mdp import (
     ALLOWED_PROTOCOLS,
@@ -38,6 +43,7 @@ from tools.md.mdp import (
     RUNNABLE_PROTOCOLS,
     MdpError,
     assert_launch_nsteps,
+    launch_nsteps_cap,
     materialize_protocol,
     normalize_overrides,
     normalize_protocol,
@@ -62,6 +68,7 @@ def run_md(
     nsteps: int | None = None,
     dt: float | None = None,
     ref_t: float | None = None,
+    gpu: bool = False,
     agent_config: dict[str, Any] | None = None,
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
@@ -72,7 +79,8 @@ def run_md(
     try:
         protocol = normalize_protocol(protocol)
         overrides = _collect_overrides(nsteps=nsteps, dt=dt, ref_t=ref_t, cfg=cfg)
-    except MdpError as exc:
+        nb = normalize_nb("gpu" if gpu else "cpu")
+    except (MdpError, MdCommandError) as exc:
         raise MdError(str(exc)) from exc
 
     project = Path(project_dir).expanduser().resolve()
@@ -102,7 +110,9 @@ def run_md(
         "topology": str(topology_path),
         "overrides": overrides,
         "output_dir": str(output_dir),
-        "max_launch_nsteps": MAX_LAUNCH_NSTEPS,
+        "nb": nb,
+        "gpu": bool(gpu),
+        "max_launch_nsteps": launch_nsteps_cap(protocol),
     }
 
     result: dict[str, Any] = {
@@ -115,6 +125,8 @@ def run_md(
         "modality": "molecular dynamics",
         "kind": "md simulation",
         "protocol": protocol,
+        "nb": nb,
+        "gpu": bool(gpu),
         "project_dir": str(project),
         "output_dir": str(output_dir),
         "table_present": False,
@@ -150,6 +162,7 @@ def run_md(
             structure_path=structure_path,
             topology_path=topology_path,
             mdp_meta=mdp_meta,
+            nb=nb,
         )
     except (MdCommandError, MdError) as exc:
         result["errors"].append(str(exc))
@@ -191,7 +204,7 @@ def run_md(
         return result
 
     try:
-        assert_launch_nsteps(mdp_meta.get("max_nsteps"))
+        assert_launch_nsteps(mdp_meta.get("max_nsteps"), protocol=protocol)
     except MdpError as exc:
         result["errors"].append(str(exc))
         result["message"] = str(exc)
@@ -226,6 +239,7 @@ def run_md(
             topology_path=topology_path,
             mdp_meta=mdp_meta,
             protocol=protocol,
+            nb=nb,
         )
     except (MdError, MdCommandError, OSError, subprocess.TimeoutExpired) as exc:
         result["errors"].append(str(exc))
@@ -271,6 +285,7 @@ def confirm_md_launch(
     print(f"  topology:  {planned.get('topology')}", file=stdout)
     print(f"  overrides: {planned.get('overrides')}", file=stdout)
     print(f"  nsteps:    {planned.get('max_nsteps')} (launch cap {planned.get('max_launch_nsteps')})", file=stdout)
+    print(f"  nb:        {planned.get('nb')} (gpu={planned.get('gpu')})", file=stdout)
     print(f"  output:    {planned.get('output_dir')}", file=stdout)
     print(
         "This is independent of REINVENT (--approve-run / --approve-dock do not apply here).",
@@ -321,6 +336,7 @@ def _command_templates(
     structure_path: Path,
     topology_path: Path,
     mdp_meta: dict[str, Any],
+    nb: str = "cpu",
 ) -> list[list[str]]:
     files = {item["template_id"]: Path(item["dest"]) for item in mdp_meta.get("files") or []}
     templates: list[list[str]] = []
@@ -339,14 +355,16 @@ def _command_templates(
                 executable=executable,
                 tpr=output_dir / "em.tpr",
                 deffnm=output_dir / "em",
+                nb=nb,
             )
         )
     gro_for_nvt = output_dir / "em.gro" if "minimization" in files else structure_path
-    if "nvt" in files:
+    nvt_mdp = files.get("nvt_eq") or files.get("nvt")
+    if nvt_mdp is not None:
         templates.append(
             build_grompp_command(
                 executable=executable,
-                mdp=files["nvt"],
+                mdp=nvt_mdp,
                 gro=gro_for_nvt,
                 top=topology_path,
                 tpr=output_dir / "nvt.tpr",
@@ -357,16 +375,19 @@ def _command_templates(
                 executable=executable,
                 tpr=output_dir / "nvt.tpr",
                 deffnm=output_dir / "nvt",
+                nb=nb,
             )
         )
-    if "production" in files:
+    md_mdp = files.get("md2ns") or files.get("production")
+    if md_mdp is not None:
         templates.append(
             build_grompp_command(
                 executable=executable,
-                mdp=files["production"],
-                gro=structure_path,
+                mdp=md_mdp,
+                gro=output_dir / "nvt.gro",
                 top=topology_path,
                 tpr=output_dir / "md.tpr",
+                cpt=output_dir / "nvt.cpt",
             )
         )
         templates.append(
@@ -374,6 +395,7 @@ def _command_templates(
                 executable=executable,
                 tpr=output_dir / "md.tpr",
                 deffnm=output_dir / "md",
+                nb=nb,
             )
         )
     traj, tpr = _preferred_traj(output_dir)
@@ -406,6 +428,7 @@ def _run_protocol(
     topology_path: Path,
     mdp_meta: dict[str, Any],
     protocol: str,
+    nb: str = "cpu",
 ) -> None:
     files = {item["template_id"]: Path(item["dest"]) for item in mdp_meta.get("files") or []}
     current_gro = structure_path
@@ -420,18 +443,20 @@ def _run_protocol(
             logs_dir=logs_dir,
             cwd=output_dir,
             stage="em",
+            nb=nb,
         )
         em_gro = output_dir / "em.gro"
         if em_gro.is_file():
             current_gro = em_gro
-        elif protocol in {"em-nvt", "nvt"}:
+        elif protocol in {"em-nvt", "nvt", "em-nvt-md2ns"}:
             result.setdefault("warnings", []).append(
                 "em.gro was not written; NVT will start from the input structure"
             )
-    if "nvt" in files:
+    nvt_mdp = files.get("nvt_eq") or files.get("nvt")
+    if nvt_mdp is not None:
         _grompp_and_mdrun(
             executable=executable,
-            mdp=files["nvt"],
+            mdp=nvt_mdp,
             gro=current_gro,
             top=topology_path,
             tpr=output_dir / "nvt.tpr",
@@ -439,6 +464,27 @@ def _run_protocol(
             logs_dir=logs_dir,
             cwd=output_dir,
             stage="nvt",
+            nb=nb,
+        )
+        nvt_gro = output_dir / "nvt.gro"
+        if nvt_gro.is_file():
+            current_gro = nvt_gro
+    md_mdp = files.get("md2ns")
+    if md_mdp is not None:
+        nvt_cpt = output_dir / "nvt.cpt"
+        _grompp_and_mdrun(
+            executable=executable,
+            mdp=md_mdp,
+            gro=current_gro,
+            top=topology_path,
+            tpr=output_dir / "md.tpr",
+            deffnm=output_dir / "md",
+            logs_dir=logs_dir,
+            cwd=output_dir,
+            stage="md",
+            nb=nb,
+            cpt=nvt_cpt if nvt_cpt.is_file() else None,
+            mdrun_timeout=MDRUN_TIMEOUT_MD2NS_SECONDS,
         )
     _run_rmsd_rmsf(executable=executable, output_dir=output_dir, logs_dir=logs_dir)
 
@@ -454,9 +500,12 @@ def _grompp_and_mdrun(
     logs_dir: Path,
     cwd: Path,
     stage: str,
+    nb: str = "cpu",
+    cpt: Path | None = None,
+    mdrun_timeout: int | None = None,
 ) -> None:
     grompp = build_grompp_command(
-        executable=executable, mdp=mdp, gro=gro, top=top, tpr=tpr
+        executable=executable, mdp=mdp, gro=gro, top=top, tpr=tpr, cpt=cpt
     )
     proc = _run_gmx(
         grompp,
@@ -468,12 +517,14 @@ def _grompp_and_mdrun(
         raise MdError(
             f"gmx grompp ({stage}) exited {proc.returncode}; see {logs_dir / f'{stage}_grompp.log'}"
         )
-    mdrun = build_mdrun_command(executable=executable, tpr=tpr, deffnm=deffnm)
+    mdrun = build_mdrun_command(
+        executable=executable, tpr=tpr, deffnm=deffnm, nb=nb
+    )
     proc = _run_gmx(
         mdrun,
         cwd=cwd,
         log_path=logs_dir / f"{stage}_mdrun.log",
-        timeout=MDRUN_TIMEOUT_SECONDS,
+        timeout=mdrun_timeout or MDRUN_TIMEOUT_SECONDS,
     )
     if proc.returncode != 0:
         raise MdError(
@@ -520,6 +571,8 @@ def _preferred_traj(output_dir: Path) -> tuple[Path, Path]:
 
 def _existing_traj(output_dir: Path) -> tuple[Path | None, Path | None]:
     candidates = (
+        (output_dir / "md.xtc", output_dir / "md.tpr"),
+        (output_dir / "md.trr", output_dir / "md.tpr"),
         (output_dir / "nvt.xtc", output_dir / "nvt.tpr"),
         (output_dir / "nvt.trr", output_dir / "nvt.tpr"),
         (output_dir / "em.xtc", output_dir / "em.tpr"),
@@ -553,17 +606,22 @@ def _run_gmx(
     log_path: Path,
     timeout: int,
     stdin_text: str | None = None,
+    allowed_binaries: tuple[str, ...] | None = None,
+    allowed_subcommands: tuple[str, ...] | None = ALLOWED_GMX_SUBCOMMANDS,
 ) -> subprocess.CompletedProcess[str]:
     if not command:
-        raise MdError("empty gmx command")
+        raise MdError("empty command")
     binary = Path(command[0]).name
-    if binary not in ALLOWED_GMX_BINARIES:
-        raise MdError(f"refusing to run non-GROMACS binary {binary!r}")
-    if len(command) < 2 or command[1] not in ALLOWED_GMX_SUBCOMMANDS:
-        raise MdError(
-            f"refusing gmx subcommand {command[1:]!r}; "
-            f"allowed: {list(ALLOWED_GMX_SUBCOMMANDS)}"
-        )
+    allowed_bins = allowed_binaries or (ALLOWED_GMX_BINARIES + ALLOWED_ACPYPE_BINARIES)
+    if binary not in allowed_bins:
+        raise MdError(f"refusing to run non-allowlisted binary {binary!r}")
+    if binary in ALLOWED_GMX_BINARIES:
+        subcommands = allowed_subcommands or ALLOWED_GMX_SUBCOMMANDS
+        if len(command) < 2 or command[1] not in subcommands:
+            raise MdError(
+                f"refusing gmx subcommand {command[1:]!r}; "
+                f"allowed: {list(subcommands)}"
+            )
     log_path.parent.mkdir(parents=True, exist_ok=True)
     cwd.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log_fh:
@@ -616,21 +674,22 @@ def _critic_payload(md: dict[str, Any]) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Independent GROMACS MD module (minimization and/or short NVT). "
-            "Not part of the REINVENT executor. Requires --approve-md to launch. "
-            "mdp files are human templates; only nsteps/dt/ref_t may be overridden."
+            "Independent GROMACS MD module (smoke-test em-nvt, or 2 ns "
+            "em-nvt-md2ns). Not part of the REINVENT executor. Requires "
+            "--approve-md to launch. mdp files are human templates; only "
+            "nsteps/dt/ref_t may be overridden. 100 ns is never launched."
         )
     )
     parser.add_argument("--project", required=True, help="Project directory")
     parser.add_argument(
         "--structure",
-        required=True,
+        default=None,
         help="Existing .gro or .pdb under <project>/input/",
     )
     parser.add_argument(
         "--topology",
-        required=True,
-        help="Existing .top under <project>/input/ (human-prepared; no pdb2gmx)",
+        default=None,
+        help="Existing .top under <project>/input/",
     )
     parser.add_argument(
         "--protocol",
@@ -638,6 +697,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PROTOCOL,
         help=(
             "Human template chain. Default em-nvt (smoke-test). "
+            "em-nvt-md2ns runs 2 ns after em+NVT. "
             "production materializes experiments/md.mdp but does not mdrun."
         ),
     )
@@ -645,7 +705,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--nsteps",
         type=int,
         default=None,
-        help=f"Allowlisted nsteps override (launch cap {MAX_LAUNCH_NSTEPS})",
+        help=(
+            "Allowlisted nsteps override "
+            f"(smoke cap {MAX_LAUNCH_NSTEPS}; 2 ns protocol cap 1000000)"
+        ),
     )
     parser.add_argument(
         "--dt",
@@ -659,6 +722,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         dest="ref_t",
         help="Allowlisted ref_t override in K",
+    )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        help="Opt-in gmx mdrun -nb gpu (default is -nb cpu -nt 1)",
+    )
+    parser.add_argument(
+        "--prepare-complex",
+        action="store_true",
+        help=(
+            "Predefined pdb2gmx + ACPYPE + solvate/ions into input/md/system.gro. "
+            "Requires --protein and --ligand-pose. Still needs --approve-md."
+        ),
+    )
+    parser.add_argument(
+        "--protein",
+        default=None,
+        help="Protein PDB under <project>/input/ (for --prepare-complex)",
+    )
+    parser.add_argument(
+        "--ligand-pose",
+        default=None,
+        dest="ligand_pose",
+        help="Docked ligand PDBQT/SDF under input/ or output/ (for --prepare-complex)",
     )
     parser.add_argument(
         "--approve-md",
@@ -678,6 +765,95 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def run_prepare_complex_cli(
+    args: argparse.Namespace,
+    agent_config: dict[str, Any],
+) -> dict[str, Any]:
+    if not args.protein or not args.ligand_pose:
+        raise MdError("--prepare-complex requires --protein and --ligand-pose")
+    env = check_md_environment()
+    gmx_path = env.get("gmx_path")
+    acpype_path = shutil.which("acpype")
+    obabel_path = shutil.which("obabel") or shutil.which("obabel3")
+    planned = {
+        "protocol": "prepare-complex",
+        "runnable": True,
+        "executable": gmx_path or "gmx",
+        "structure": args.protein,
+        "topology": args.ligand_pose,
+        "overrides": {},
+        "output_dir": str(Path(args.project).resolve() / "output" / "md" / "prep"),
+        "max_launch_nsteps": 0,
+        "nb": "cpu",
+        "gpu": False,
+    }
+    result: dict[str, Any] = {
+        "ok": False,
+        "approved": bool(args.approve_md),
+        "skipped": False,
+        "success": False,
+        "engine": "gmx",
+        "package": "gromacs",
+        "kind": "complex prep",
+        "protocol": "prepare-complex",
+        "project_dir": str(Path(args.project).resolve()),
+        "table_present": False,
+        "environment": env,
+        "planned": planned,
+        "warnings": [],
+        "errors": [],
+        "message": "",
+    }
+    if not args.approve_md:
+        result["skipped"] = True
+        result["ok"] = True
+        result["message"] = (
+            "Complex prep not launched (missing --approve-md). "
+            "gmx/acpype were not run."
+        )
+        return result
+    if not confirm_md_launch(
+        planned, assume_yes=bool(args.yes)
+    ):
+        result["skipped"] = True
+        result["approved"] = False
+        result["ok"] = True
+        result["message"] = "Human declined — complex prep will not run."
+        return result
+    if not gmx_path:
+        result["errors"].append("gmx not found on PATH")
+        result["message"] = result["errors"][-1]
+        return result
+    if not acpype_path:
+        result["errors"].append(
+            "acpype not found on PATH (needed to parameterize the ligand; "
+            "this module does not auto-install)"
+        )
+        result["message"] = result["errors"][-1]
+        return result
+    try:
+        prep = prepare_complex(
+            args.project,
+            protein=args.protein,
+            ligand=args.ligand_pose,
+            gmx_path=str(gmx_path),
+            acpype_path=str(acpype_path),
+            obabel_path=obabel_path,
+            run_fn=_run_gmx,
+        )
+    except (ComplexPrepError, MdCommandError, OSError, subprocess.TimeoutExpired) as exc:
+        result["errors"].append(str(exc))
+        result["message"] = str(exc)
+        return result
+    result["ok"] = True
+    result["success"] = True
+    result["prep"] = prep
+    result["message"] = (
+        f"Wrote parameterized complex {prep.get('structure')} / {prep.get('topology')}"
+    )
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     agent_config: dict[str, Any] = {}
@@ -690,18 +866,24 @@ def main(argv: list[str] | None = None) -> int:
             agent_config = {}
 
     try:
-        result = run_md(
-            args.project,
-            structure=args.structure,
-            topology=args.topology,
-            protocol=args.protocol,
-            approve=bool(args.approve_md),
-            assume_yes=bool(args.yes),
-            nsteps=args.nsteps,
-            dt=args.dt,
-            ref_t=args.ref_t,
-            agent_config=agent_config,
-        )
+        if args.prepare_complex:
+            result = run_prepare_complex_cli(args, agent_config)
+        else:
+            if not args.structure or not args.topology:
+                raise MdError("--structure and --topology are required unless --prepare-complex")
+            result = run_md(
+                args.project,
+                structure=args.structure,
+                topology=args.topology,
+                protocol=args.protocol,
+                approve=bool(args.approve_md),
+                assume_yes=bool(args.yes),
+                nsteps=args.nsteps,
+                dt=args.dt,
+                ref_t=args.ref_t,
+                gpu=bool(args.gpu),
+                agent_config=agent_config,
+            )
     except MdError as exc:
         print(f"ERROR: {exc}")
         return 2

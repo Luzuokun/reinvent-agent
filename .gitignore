@@ -44,6 +44,13 @@ projects/**/output/md/**
 projects/**/output/literature/**
 !projects/**/output/literature/
 !projects/**/output/literature/.gitkeep
+
+# Generated solvated complexes (keep the tiny demo fixture)
+projects/**/input/md/*.gro
+projects/**/input/md/*.top
+projects/**/input/md/*.itp
+!projects/demo_project/input/md/system.gro
+!projects/demo_project/input/md/system.top
 *.chkpt
 
 # OS / editor

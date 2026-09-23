@@ -1,0 +1,18 @@
+{
+  "pdb": "1M17",
+  "chain": "A",
+  "ligand": "AQ4",
+  "ligand_name": "erlotinib",
+  "center_angstrom": [
+    22.0137,
+    0.2528,
+    52.794
+  ],
+  "size_angstrom": [
+    20.0,
+    20.0,
+    20.0
+  ],
+  "n_aq4_heavy_atoms": 29,
+  "method": "centroid of AQ4 heavy atoms in 1M17 chain A"
+}

@@ -18,11 +18,24 @@ from tools import REPO_ROOT
 
 TEMPLATES_DIR = REPO_ROOT / "experiments"
 
-ALLOWED_TEMPLATE_IDS: tuple[str, ...] = ("minimization", "nvt", "production")
-ALLOWED_PROTOCOLS: tuple[str, ...] = ("em", "nvt", "em-nvt", "production")
-RUNNABLE_PROTOCOLS: tuple[str, ...] = ("em", "nvt", "em-nvt")
+ALLOWED_TEMPLATE_IDS: tuple[str, ...] = (
+    "minimization",
+    "nvt",
+    "nvt_eq",
+    "md2ns",
+    "production",
+    "ions",
+)
+ALLOWED_PROTOCOLS: tuple[str, ...] = (
+    "em",
+    "nvt",
+    "em-nvt",
+    "em-nvt-md2ns",
+    "production",
+)
+RUNNABLE_PROTOCOLS: tuple[str, ...] = ("em", "nvt", "em-nvt", "em-nvt-md2ns")
 
-# Default smoke-test — not 100 ns production.
+# Default smoke-test — not 100 ns production and not the 2 ns complex protocol.
 DEFAULT_PROTOCOL = "em-nvt"
 
 ALLOWED_OVERRIDE_KEYS: tuple[str, ...] = ("nsteps", "dt", "ref_t")
@@ -61,7 +74,8 @@ FORBIDDEN_OVERRIDE_KEYS: frozenset[str] = frozenset(
 
 # Hard caps so a typo cannot turn smoke-test into 100 ns, and so override
 # values stay scalars in a physical range.
-MAX_LAUNCH_NSTEPS = 10_000
+MAX_LAUNCH_NSTEPS = 10_000  # smoke-test protocols (em / nvt / em-nvt)
+MAX_LAUNCH_NSTEPS_MD2NS = 1_000_000  # 2 ns at dt=0.002 ps; still rejects 100 ns
 MAX_TEMPLATE_NSTEPS = 50_000_000  # production template value; launch still capped
 MIN_NSTEPS = 1
 MIN_DT = 0.0001
@@ -97,10 +111,25 @@ TEMPLATE_SPECS: dict[str, TemplateSpec] = {
         filename="nvt.mdp",
         description="Short NVT equilibration (smoke-test).",
     ),
+    "nvt_eq": TemplateSpec(
+        template_id="nvt_eq",
+        filename="nvt_eq.mdp",
+        description="Short NVT equilibration for a solvated complex (~50 ps).",
+    ),
+    "md2ns": TemplateSpec(
+        template_id="md2ns",
+        filename="md2ns.mdp",
+        description="2 ns production after NVT (not 100 ns).",
+    ),
     "production": TemplateSpec(
         template_id="production",
         filename="md.mdp",
         description="100 ns production after NPT (not the default protocol).",
+    ),
+    "ions": TemplateSpec(
+        template_id="ions",
+        filename="ions.mdp",
+        description="nsteps=0 steep mdp for gmx genion only.",
     ),
 }
 
@@ -108,6 +137,7 @@ PROTOCOL_TEMPLATES: dict[str, tuple[str, ...]] = {
     "em": ("minimization",),
     "nvt": ("nvt",),
     "em-nvt": ("minimization", "nvt"),
+    "em-nvt-md2ns": ("minimization", "nvt_eq", "md2ns"),
     "production": ("production",),
 }
 
@@ -121,12 +151,16 @@ _KEY_ALIASES = {
 
 def normalize_protocol(protocol: str) -> str:
     if not isinstance(protocol, str) or not protocol.strip():
-        raise MdpError("protocol is required (em, nvt, em-nvt, production)")
+        raise MdpError(
+            "protocol is required (em, nvt, em-nvt, em-nvt-md2ns, production)"
+        )
     name = protocol.strip().lower().replace("_", "-")
     if name in {"em+nvt", "emin-nvt", "min-nvt"}:
         name = "em-nvt"
     if name in {"min", "minimization", "em.mdp"}:
         name = "em"
+    if name in {"md2ns", "2ns", "em-nvt-2ns", "em+nvt+md2ns"}:
+        name = "em-nvt-md2ns"
     if name in {"md", "prod"}:
         name = "production"
     if name not in ALLOWED_PROTOCOLS:
@@ -142,6 +176,10 @@ def normalize_template_id(template_id: str) -> str:
     name = template_id.strip().lower()
     if name in {"min", "em", "minimisation"}:
         name = "minimization"
+    if name in {"nvt-eq", "nvteq"}:
+        name = "nvt_eq"
+    if name in {"md2ns", "2ns"}:
+        name = "md2ns"
     if name in {"md", "prod"}:
         name = "production"
     if name not in ALLOWED_TEMPLATE_IDS:
@@ -378,15 +416,27 @@ def parse_mdp_nsteps(text: str) -> int | None:
     return None
 
 
-def assert_launch_nsteps(nsteps: int | None) -> int:
+def launch_nsteps_cap(protocol: str | None = None) -> int:
+    """Smoke-test cap is 10k steps; the 2 ns protocol may use 1e6. 100 ns is never launched."""
+    if protocol is None:
+        return MAX_LAUNCH_NSTEPS
+    name = normalize_protocol(protocol)
+    if name == "em-nvt-md2ns":
+        return MAX_LAUNCH_NSTEPS_MD2NS
+    return MAX_LAUNCH_NSTEPS
+
+
+def assert_launch_nsteps(nsteps: int | None, protocol: str | None = None) -> int:
     if nsteps is None:
         raise MdpError("materialized mdp has no nsteps")
-    if nsteps > MAX_LAUNCH_NSTEPS:
+    cap = launch_nsteps_cap(protocol)
+    if nsteps > cap:
         raise MdpError(
             f"nsteps={nsteps} exceeds this module's launch cap "
-            f"({MAX_LAUNCH_NSTEPS}). Production 100 ns is not launched here; "
-            "use the smoke-test protocol (em-nvt) or wait for the production "
-            "MD phase. The human template remains experiments/md.mdp."
+            f"({cap}) for protocol {protocol or DEFAULT_PROTOCOL}. "
+            "Production 100 ns (nsteps=50000000) is not launched here. "
+            "Use em-nvt for the smoke-test or em-nvt-md2ns for 2 ns. "
+            "The 100 ns human template remains experiments/md.mdp."
         )
     if nsteps < MIN_NSTEPS:
         raise MdpError(f"nsteps {nsteps} is below minimum {MIN_NSTEPS}")
