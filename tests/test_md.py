@@ -260,6 +260,69 @@ def test_build_mdrun_predefined_cpu_argv():
     assert "bash" not in cmd
 
 
+def test_build_mdrun_gpu_argv_opt_in():
+    cmd = build_mdrun_command(
+        executable="/usr/bin/gmx",
+        tpr="md.tpr",
+        deffnm="md",
+        nb="gpu",
+    )
+    assert "-nb" in cmd and "gpu" in cmd
+    assert "cpu" not in cmd
+    assert "-nt" not in cmd
+
+
+def test_md2ns_template_is_2ns_not_100ns():
+    from tools.md.mdp import MAX_LAUNCH_NSTEPS_MD2NS, read_template_text, parse_mdp_nsteps
+
+    text = read_template_text("md2ns")
+    assert parse_mdp_nsteps(text) == 1_000_000
+    assert parse_mdp_nsteps(text) == MAX_LAUNCH_NSTEPS_MD2NS
+    assert parse_mdp_nsteps(text) < 50_000_000
+    prod = read_template_text("production")
+    assert parse_mdp_nsteps(prod) == 50_000_000
+
+
+def test_launch_cap_allows_2ns_only_for_md2ns_protocol():
+    from tools.md.mdp import assert_launch_nsteps, MdpError
+
+    assert assert_launch_nsteps(1_000_000, protocol="em-nvt-md2ns") == 1_000_000
+    with pytest.raises(MdpError, match="launch cap"):
+        assert_launch_nsteps(1_000_000, protocol="em-nvt")
+    with pytest.raises(MdpError, match="launch cap"):
+        assert_launch_nsteps(50_000_000, protocol="em-nvt-md2ns")
+
+
+def test_md2ns_protocol_mocked_gmx_writes_tables(tmp_path: Path):
+    proj, gro, top = _project(tmp_path)
+    with patch("tools.md.run.check_md_environment", return_value=_fake_env()):
+        with patch("tools.md.run._run_gmx", side_effect=_fake_gmx) as mocked:
+            result = run_md(
+                proj,
+                structure=gro,
+                topology=top,
+                protocol="em-nvt-md2ns",
+                gpu=True,
+                approve=True,
+                assume_yes=True,
+            )
+    assert mocked.called
+    mdrun_cmds = [c.args[0] for c in mocked.call_args_list if c.args[0][1] == "mdrun"]
+    assert mdrun_cmds
+    assert any("-nb" in cmd and "gpu" in cmd for cmd in mdrun_cmds)
+    assert not any("50000000" in " ".join(cmd) for cmd in mdrun_cmds)
+    assert result["success"] is True
+    assert result["gpu"] is True
+    from tools.md.mdp import parse_mdp_nsteps
+
+    nsteps_vals = [
+        parse_mdp_nsteps(Path(item["dest"]).read_text(encoding="utf-8"))
+        for item in result["mdp"]["files"]
+    ]
+    assert 1_000_000 in nsteps_vals
+    assert 50_000_000 not in nsteps_vals
+
+
 def test_structure_must_stay_under_input(tmp_path: Path):
     proj, _gro, _top = _project(tmp_path)
     outside = tmp_path / "secret.gro"

@@ -1,0 +1,40 @@
+; Human-written short NVT equilibration for a solvated protein–ligand complex.
+; ~50 ps at dt=0.002 ps. Not the 100 ns production template (experiments/md.mdp).
+; Do not generate or replace this file from model output.
+; Allowlisted overrides: nsteps, dt, ref_t (scalars only).
+
+integrator              = md
+nsteps                  = 25000
+dt                      = 0.002
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 500
+nstlog                  = 500
+nstxout-compressed      = 500
+compressed-x-grps       = System
+continuation            = no
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+cutoff-scheme           = Verlet
+ns_type                 = grid
+nstlist                 = 10
+rvdw                    = 1.2
+rvdw-switch             = 1.0
+vdw-modifier            = force-switch
+DispCorr                = No
+rcoulomb                = 1.2
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau_t                   = 1.0
+ref_t                   = 298
+pcoupl                  = no
+pbc                     = xyz
+gen_vel                 = yes
+gen_temp                = 298
+gen_seed                = 42

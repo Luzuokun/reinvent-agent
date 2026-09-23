@@ -1,0 +1,11 @@
+; Human-written ions.mdp for gmx genion (nsteps=0, no dynamics).
+; Used only by predefined protein–ligand prep. Not a production run.
+; Do not generate or replace this file from model output.
+
+integrator              = steep
+nsteps                  = 0
+cutoff-scheme           = Verlet
+coulombtype             = cutoff
+rcoulomb                = 1.0
+rvdw                    = 1.0
+pbc                     = xyz

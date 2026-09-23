@@ -141,7 +141,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 - `tools/md/`：env / mdp / commands / prepare / analyze / CLI；`python -m tools.md`
 - 单独 `--approve-md` + 单独 `check_md_environment`；Executor 遇到 `gmx` / `run_md` 会拒绝并警告
-- 人写模板：`experiments/minimization.mdp`、`nvt.mdp`；生产 `experiments/md.mdp`（100 ns，非默认、本阶段不 mdrun）
+- 人写模板：`experiments/minimization.mdp`、`nvt.mdp`、`nvt_eq.mdp`、`md2ns.mdp`（2 ns）；生产 `experiments/md.mdp`（100 ns，非默认、不 mdrun）
 - 允许改的标量：`nsteps`、`dt`、`ref_t`；拒绝 integrator / cutoff / constraint 以及整份 mdp
 - 表：`<project>/output/md/rmsd.csv`、`rmsf.csv`；demo 夹具在 `projects/demo_project/input/md/`
 - Critic：`evidence.md.table_present` 才允许评论 GROMACS / RMSF

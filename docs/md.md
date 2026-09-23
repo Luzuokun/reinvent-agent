@@ -59,16 +59,21 @@ checked in as a human template, not launched. Literature search is
 |----|------|----------------|
 | `minimization` | `experiments/minimization.mdp` | Smoke-test EM (`nsteps=500`) |
 | `nvt` | `experiments/nvt.mdp` | Smoke-test short NVT (`nsteps=500`) |
-| `production` | `experiments/md.mdp` | 100 ns production after NPT (`nsteps=50000000`). **Not** the default. |
+| `nvt_eq` | `experiments/nvt_eq.mdp` | Solvated-complex NVT (~50 ps) |
+| `md2ns` | `experiments/md2ns.mdp` | 2 ns production (`nsteps=1000000`). Runnable via `em-nvt-md2ns`. |
+| `production` | `experiments/md.mdp` | 100 ns production (`nsteps=50000000`). **Not** launched. |
+| `ions` | `experiments/ions.mdp` | `nsteps=0` genion helper (prep only). |
 
 `--protocol` selects a chain:
 
 - `em-nvt` (default): minimization then short NVT, then RMSD/RMSF
 - `em` / `nvt`: one stage only
+- `em-nvt-md2ns`: minimization, ~50 ps NVT, then **2 ns** production (`nsteps=1000000`). Opt-in `--gpu` uses `mdrun -nb gpu`.
 - `production`: materializes `experiments/md.mdp` for inspection; **does not** `mdrun`
 
-Launch cap: `nsteps ≤ 10000`. A 100 ns override is rejected. Tests never
-start production MD.
+Launch cap: smoke-test `nsteps ≤ 10000`. The 2 ns protocol may use `nsteps=1000000`. A 100 ns override (`nsteps=50000000`) is rejected. Tests never start 100 ns.
+
+`--prepare-complex` runs predefined `pdb2gmx` (amber99sb-ildn) + ACPYPE (GAFF2) + solvate/genion and writes `<project>/input/md/system.gro` + `system.top`. Missing acpype is a loud failure, not invented RMSD.
 
 ## How to run
 
@@ -137,8 +142,9 @@ payload with an `md` object and runs the deterministic critic.
    (`nsteps`, `dt`, `ref_t`). Integrator / cutoff / constraint changes are
    rejected. A full mdp cannot be passed in.
 6. No auto-install. Missing `gmx` is a loud failure, not invented RMSD.
-7. CPU-only `mdrun` (`-nb cpu -nt 1`). No GPU flag. Launch cap keeps this
-   phase off 100 ns production.
+7. Default `mdrun` is CPU (`-nb cpu -nt 1`). `--gpu` opts into `-nb gpu`.
+   Smoke-test launch cap stays at 10000 steps. `em-nvt-md2ns` may launch
+   2 ns (`nsteps=1000000`). 100 ns is still not launched.
 
 ## Tests
 

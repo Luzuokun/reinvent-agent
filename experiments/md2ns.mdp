@@ -1,0 +1,42 @@
+; Human-written 2 ns production MD after short NVT (dt=0.002 → nsteps=1000000).
+; Not the 100 ns template (experiments/md.mdp, nsteps=50000000) and not launched
+; as the default smoke-test. Do not generate or replace this file from model output.
+; Allowlisted overrides only: nsteps, dt, ref_t (scalars). Never emit a full mdp.
+title                   = Protein-ligand 2 ns MD
+integrator              = md
+nsteps                  = 1000000
+dt                      = 0.002
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 5000
+nstlog                  = 5000
+nstxout-compressed      = 5000
+compressed-x-grps       = System
+continuation            = yes
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+cutoff-scheme           = Verlet
+ns_type                 = grid
+nstlist                 = 10
+rvdw                    = 1.2
+rvdw-switch             = 1.0
+vdw-modifier            = force-switch
+DispCorr                = No
+rcoulomb                = 1.2
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau_t                   = 1.0
+ref_t                   = 298
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau_p                   = 5.0
+ref_p                   = 1.0
+compressibility         = 4.5e-5
+pbc                     = xyz
+gen_vel                 = no

@@ -83,6 +83,8 @@ docking:
 # Independent of the REINVENT executor. python -m tools.md only.
 # Launch still requires --approve-md. mdp files are human templates;
 # only nsteps / dt / ref_t may be overridden. default_nsteps: null → template.
+# Smoke-test launch cap is 10000; em-nvt-md2ns may use 1000000 (2 ns).
+# nsteps=50000000 (100 ns) is never launched.
 md:
   default_protocol: em-nvt
   default_nsteps: null
