@@ -360,3 +360,5 @@ def _solvate_and_ion(
         raise CarbPrepareError(
             f"gmx genion failed; see {logs_dir / 'genion.log'}"
         )
+    # Rebuild ndx from the ionized box so tc-grps=System covers water/ions.
+    write_index_ndx(ionized, input_dir / "index.ndx")

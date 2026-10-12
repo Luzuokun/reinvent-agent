@@ -55,6 +55,7 @@ from tools.md.carb.templates import (
     parse_itp_typed_atoms,
     parse_pdb_residues,
     validate_bundled_templates,
+    write_index_ndx,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -100,6 +101,12 @@ def _fake_gmx(command, *, cwd, log_path, timeout, stdin_text=None, allowed_binar
     elif sub == "genion":
         gro = _opt(command, "-o")
         src = _opt(command, "-c")
+        if src is None and gro is not None:
+            for name in ("solvated.gro", "boxed.gro", "complex.gro"):
+                cand = gro.parent / name
+                if cand.is_file():
+                    src = cand
+                    break
         _copy_or_touch(src, gro, "fake ionized gro\n")
         if gro and not gro.is_file():
             gro.write_text("fake ionized gro\n", encoding="utf-8")
@@ -162,10 +169,11 @@ def test_bundled_templates_residue_counts_and_charges():
 def test_fucoidan_sulfate_uses_charmm36_carb_types():
     for name in ("fucoidan_12.itp", "fucoidan_12_alt_sulfation.itp"):
         path = TEMPLATES_DIR / name
-        text = path.read_text(encoding="utf-8")
-        assert BANNED_CGENFF_SULFATE_ESTER not in text
-        assert "SG3O1" not in text
         atoms = parse_itp_typed_atoms(path)
+        types = {a["type"] for a in atoms}
+        assert BANNED_CGENFF_SULFATE_ESTER not in types
+        assert "SG3O1" not in types
+        assert "OG2P1" not in types
         esters = [a for a in atoms if a["name"] in {"O2", "O4"} and a["type"] == SULFATE_ESTER_O]
         sulfurs = [a for a in atoms if a["name"] in {"S2", "S4"}]
         terminals = [a for a in atoms if a["name"] in {"O1S", "O2S", "O3S", "O4S", "O5S", "O6S"}]
@@ -284,8 +292,55 @@ def test_prepare_mocked_gmx_writes_system(tmp_path: Path):
     assert "prepare-complex" not in top
     assert (proj / "input" / "md" / "index.ndx").is_file()
     ndx = (proj / "input" / "md" / "index.ndx").read_text(encoding="utf-8")
+    gro = Path(result["structure"]).read_text(encoding="utf-8").splitlines()
+    n_atoms = int(gro[1])
+    system_ids = []
+    in_system = False
+    for line in ndx.splitlines():
+        if line.startswith("["):
+            in_system = line.strip() == "[ System ]"
+            continue
+        if in_system:
+            system_ids.extend(int(x) for x in line.split())
     assert "[ Amylose ]" in ndx
     assert "[ Fucoidan ]" in ndx
+    assert len(system_ids) == n_atoms
+
+
+def test_write_index_ndx_system_covers_solvent(tmp_path: Path):
+    gro = tmp_path / "box.gro"
+    gro.write_text(
+        "solvated\n"
+        "    5\n"
+        "    1AGLC     C1    1   0.000   0.000   0.000\n"
+        "    1AFUS     C1    2   0.100   0.000   0.000\n"
+        "    2SOL      OW    3   0.200   0.000   0.000\n"
+        "    2SOL     HW1    4   0.210   0.000   0.000\n"
+        "    3NA       NA    5   0.300   0.000   0.000\n"
+        "   1.00000   1.00000   1.00000\n",
+        encoding="utf-8",
+    )
+    dest = tmp_path / "index.ndx"
+    write_index_ndx(gro, dest)
+    text = dest.read_text(encoding="utf-8")
+    system_ids = []
+    amy_ids = []
+    fuc_ids = []
+    section = None
+    for line in text.splitlines():
+        if line.startswith("["):
+            section = line.strip()
+            continue
+        ids = [int(x) for x in line.split()]
+        if section == "[ System ]":
+            system_ids.extend(ids)
+        elif section == "[ Amylose ]":
+            amy_ids.extend(ids)
+        elif section == "[ Fucoidan ]":
+            fuc_ids.extend(ids)
+    assert system_ids == [1, 2, 3, 4, 5]
+    assert amy_ids == [1]
+    assert fuc_ids == [2]
 
 
 def test_prepare_isolated_from_egfr_complex():
