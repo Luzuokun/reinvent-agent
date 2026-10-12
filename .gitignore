@@ -44,11 +44,20 @@ projects/**/output/md/**
 projects/**/output/literature/**
 !projects/**/output/literature/
 !projects/**/output/literature/.gitkeep
+projects/**/output/carb/**
+!projects/**/output/carb/
+!projects/**/output/carb/.gitkeep
 
 # Generated solvated complexes (keep the tiny demo fixture)
 projects/**/input/md/*.gro
 projects/**/input/md/*.top
 projects/**/input/md/*.itp
+projects/**/input/md/*.pdb
+projects/**/input/md/*.ndx
+projects/**/input/md/*.tpr
+projects/**/input/md/*.mdp
+projects/**/input/md/charmm36.ff
+projects/**/input/md/\#*
 !projects/demo_project/input/md/system.gro
 !projects/demo_project/input/md/system.top
 *.chkpt

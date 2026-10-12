@@ -1,8 +1,9 @@
 # 直链淀粉–岩藻多糖 MD（同事三步）
 
-协议 ID：`amylose26_fucoidan12`。入口是独立 CLI
-`python -m tools.md.carb`，**不是** EGFR 蛋白–配体的
-`python -m tools.md --prepare-complex`。
+协议 ID：`amylose26_fucoidan12`。**主入口是独立 CLI**
+`python -m tools.md.carb`（自动化请用这个），**不是** EGFR 蛋白–配体的
+`python -m tools.md --prepare-complex`。不会写命令的同事可另装可选依赖，用本机
+`python -m tools.md.carb.ui` 点选（见文末）。
 
 mdp 只来自人写模板；可改的标量仅限 `nsteps`、`dt`、`ref_t`、`salt_mol`、
 `box_d`、`n_replicas`。模型不能写整份 mdp，也不能改 integrator / 约束 /
@@ -93,8 +94,28 @@ python -m tools.md.carb run \
 
 可选 `--gpu`（`mdrun -nb gpu`）。可选 `--n-replicas`（默认 3，上限 5）。
 
+## 可选：本机点选 UI（非编码同事）
+
+CLI 仍是自动化与脚本的主入口。需要点按钮时，另装可选依赖后启动本机界面
+（默认只绑 `127.0.0.1`，无账号、无云端、不开公网分享）：
+
+```bash
+pip install '.[ui]'
+# 或：pip install -r requirements-ui.txt
+
+python -m tools.md.carb.ui
+```
+
+浏览器打开提示的本地地址。按钮调用与 CLI **同一套 Python 函数**
+（`doctor` / `prepare_carb` / `run_carb` / `report_carb`），不走 shell 子进程。
+**Approve MD** 是显式勾选，默认关闭。选 `production_200ns` 时还会再要求
+**Confirm 200 ns**（同样默认关），并且会把 Approve MD 打回关。
+
+不要把它做成 SaaS，也不要加云端登录。
+
 ## 不要用的命令
 
 - `python -m tools.md --prepare-complex`（EGFR 蛋白–配体，Amber/ACPYPE）
 - 把 200 ns 当默认协议
 - 让模型生成 mdp / 残基拓扑 / 任意 shell
+- 把本机 UI 暴露到公网或加云端鉴权

@@ -43,7 +43,7 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 - 产物只写 `output/literature/`。无出处记录直接丢弃。
 - REINVENT 的 `check_environment` **不**探测 PubMed。
 - `--from-run` / 人写预设 / MCP / 对接 / MD 行为不变。启动 REINVENT 仍要 `--approve-run`；对接仍要 `--approve-dock`；MD 仍要 `--approve-md`。
-- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上 SaaS/Web UI。
+- 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上 SaaS/云端 Web 鉴权。可选本机 Gradio（`python -m tools.md.carb.ui`）只绑 localhost，给非编码同事点选 Doctor/Prepare/Run/Report；CLI 仍是自动化主入口。
 
 下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 

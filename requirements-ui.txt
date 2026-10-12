@@ -1,0 +1,5 @@
+# Optional local Gradio UI for python -m tools.md.carb.ui
+# Not required for CLI / automation.
+#   pip install -r requirements-ui.txt
+#   # or: pip install '.[ui]'
+gradio>=4.0

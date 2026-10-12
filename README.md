@@ -67,6 +67,9 @@ pip install -r requirements.txt
 pip install 'openai>=1.40'
 # optional, only for the MCP stdio server (Cursor / other MCP clients):
 pip install 'mcp>=1.9,<2'
+# optional, only for the local carb click UI (CLI stays the automation entry):
+pip install '.[ui]'
+# or: pip install -r requirements-ui.txt
 ```
 
 ## Place the prior (required for real runs)
@@ -321,6 +324,16 @@ python -m tools.md.carb report --project projects/amylose_fucoidan
 Default run is short EM+NVT+NPT. `production_200ns` is 200 ns × 3 replicas
 and must be named explicitly. mdp stays human-written.
 
+Optional **local** click UI (CLI stays primary for automation):
+
+```bash
+pip install '.[ui]'    # or: pip install -r requirements-ui.txt
+python -m tools.md.carb.ui
+```
+
+Same Python functions as the CLI. Approve MD is an explicit checkbox
+(default off; 200 ns needs a second confirmation). Localhost only — not SaaS.
+
 ### Independent literature (`python -m tools.literature`)
 
 Not a Planner/Executor/MCP step. Separate `--approve-literature`. Queries
@@ -535,7 +548,9 @@ Run from the repo root with `conda activate reinvent4`.
     the default and is not launched by this module.
 14. The amylose–fucoidan protocol is `python -m tools.md.carb` (not EGFR
     `--prepare-complex`). Default is short EM–NVT–NPT; 200 ns requires
-    `--protocol production_200ns` plus `--approve-md`.
+    `--protocol production_200ns` plus `--approve-md`. Optional local UI:
+    `python -m tools.md.carb.ui` (same functions, HITL approve checkbox,
+    no SaaS / cloud auth).
 15. Literature is `python -m tools.literature` with `--approve-literature`.
     It returns only sourced entries and does not write papers. Missing
     network is a loud failure. Handbook mapping is
