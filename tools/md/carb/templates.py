@@ -26,6 +26,16 @@ from tools.md.carb.constants import (
 _ITP_ATOM = re.compile(
     r"^\s*(\d+)\s+\S+\s+(\d+)\s+(\S+)\s+\S+\s+\d+\s+(-?\d+(?:\.\d+)?)"
 )
+_ITP_ATOM_TYPED = re.compile(
+    r"^\s*(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+\d+\s+(-?\d+(?:\.\d+)?)"
+)
+
+# CHARMM36 carbohydrate methylsulfate (par_all36_carb). CGenFF OG303 has no
+# CC3161–OG303 bond in the pinned ffbonded.itp.
+SULFATE_ESTER_O = "OC30P"
+SULFATE_S = "SC"
+SULFATE_TERMINAL_O = "OC2DP"
+BANNED_CGENFF_SULFATE_ESTER = "OG303"
 
 
 class CarbTemplateError(ValueError):
@@ -157,6 +167,104 @@ def parse_itp_charges(path: Path) -> dict[str, Any]:
     }
 
 
+def parse_itp_typed_atoms(path: Path) -> list[dict[str, Any]]:
+    """Parse [ atoms ] rows with type and name (for CHARMM36 sulfate checks)."""
+    in_atoms = False
+    atoms: list[dict[str, Any]] = []
+    for raw in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.split(";", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_atoms = line.lower().replace(" ", "") == "[atoms]"
+            continue
+        if not in_atoms:
+            continue
+        match = _ITP_ATOM_TYPED.match(line)
+        if not match:
+            continue
+        atoms.append(
+            {
+                "nr": int(match.group(1)),
+                "type": match.group(2),
+                "resid": int(match.group(3)),
+                "resname": match.group(4),
+                "name": match.group(5),
+                "charge": float(match.group(6)),
+            }
+        )
+    return atoms
+
+
+def check_fucoidan_sulfate_charmm36_types(path: Path) -> list[str]:
+    """Require carb methylsulfate types on sulfated fucose (not CGenFF OG303)."""
+    errors: list[str] = []
+    atoms = parse_itp_typed_atoms(path)
+    if not atoms:
+        return [f"{path.name}: no [ atoms ] parsed"]
+    n_ester = 0
+    n_sulfur = 0
+    for atom in atoms:
+        atype = atom["type"]
+        name = atom["name"]
+        if atype == BANNED_CGENFF_SULFATE_ESTER:
+            errors.append(
+                f"{path.name} atom {atom['nr']} {name} uses {BANNED_CGENFF_SULFATE_ESTER}; "
+                f"CHARMM36 carb sulfate ester oxygen is {SULFATE_ESTER_O} "
+                f"(no CC3161–{BANNED_CGENFF_SULFATE_ESTER} bond in ffbonded.itp)"
+            )
+        if name in {"S2", "S4"}:
+            n_sulfur += 1
+            if atype != SULFATE_S:
+                errors.append(
+                    f"{path.name} atom {atom['nr']} {name} type {atype} != {SULFATE_S}"
+                )
+        if name in {"O1S", "O2S", "O3S", "O4S", "O5S", "O6S"}:
+            if atype != SULFATE_TERMINAL_O:
+                errors.append(
+                    f"{path.name} atom {atom['nr']} {name} type {atype} != {SULFATE_TERMINAL_O}"
+                )
+        if name in {"O2", "O4"} and atype not in {SULFATE_ESTER_O, "OC311"}:
+            errors.append(
+                f"{path.name} atom {atom['nr']} {name} type {atype} is not "
+                f"{SULFATE_ESTER_O} (sulfate ester) or OC311 (hydroxyl/glycosidic)"
+            )
+        if name in {"O2", "O4"} and atype == SULFATE_ESTER_O:
+            n_ester += 1
+    if n_ester == 0:
+        errors.append(f"{path.name}: no {SULFATE_ESTER_O} sulfate ester oxygen found")
+    if n_sulfur == 0:
+        errors.append(f"{path.name}: no sulfate sulfur ({SULFATE_S}) found")
+    if n_ester != n_sulfur:
+        errors.append(
+            f"{path.name}: sulfate ester count {n_ester} != sulfur count {n_sulfur}"
+        )
+    return errors
+
+
+def charmm36_bondtype_exists(ffbonded: Path, type_a: str, type_b: str) -> bool:
+    """True if [ bondtypes ] lists an unordered pair matching type_a/type_b."""
+    if not Path(ffbonded).is_file():
+        return False
+    in_bonds = False
+    wanted = {type_a, type_b}
+    for raw in Path(ffbonded).read_text(encoding="utf-8").splitlines():
+        line = raw.split(";", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            in_bonds = line.lower().replace(" ", "") == "[bondtypes]"
+            continue
+        if not in_bonds:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        if {parts[0], parts[1]} == wanted:
+            return True
+    return False
+
+
 def gro_com(path: Path, resname: str | None = None) -> tuple[float, float, float]:
     xs: list[float] = []
     ys: list[float] = []
@@ -215,6 +323,18 @@ def validate_bundled_templates(templates_dir: Path | None = None) -> dict[str, A
     )
     details["fucoidan_12_alt_sulfation"] = alt
     errors.extend(alt.get("errors") or [])
+
+    for key in ("fucoidan_12", "fucoidan_12_alt_sulfation"):
+        itp_name = manifest[key]["files"]["itp"]
+        sulfate_errors = check_fucoidan_sulfate_charmm36_types(root / itp_name)
+        details[key]["sulfate_types"] = {
+            "ok": not sulfate_errors,
+            "ester": SULFATE_ESTER_O,
+            "sulfur": SULFATE_S,
+            "terminal": SULFATE_TERMINAL_O,
+            "errors": sulfate_errors,
+        }
+        errors.extend(sulfate_errors)
 
     amy_gro = root / manifest["amylose_26"]["files"]["gro"]
     fuc_gro = root / manifest["fucoidan_12"]["files"]["gro"]

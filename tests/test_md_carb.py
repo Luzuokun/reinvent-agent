@@ -27,7 +27,13 @@ from tools.md.carb.constants import (
     TEMPLATES_DIR,
 )
 from tools.md.carb.doctor import doctor
-from tools.md.carb.forcefield import ForcefieldError, ensure_forcefield, load_pin, sha256_file
+from tools.md.carb.forcefield import (
+    ForcefieldError,
+    ensure_forcefield,
+    forcefield_ready,
+    load_pin,
+    sha256_file,
+)
 from tools.md.carb.mdp import (
     MdpError,
     assert_carb_launch_nsteps,
@@ -39,7 +45,14 @@ from tools.md.carb.report import DISCLAIMER, report_carb
 from tools.md.carb.run import run_carb
 from tools.md.carb.scalars import normalize_carb_scalars
 from tools.md.carb.templates import (
+    BANNED_CGENFF_SULFATE_ESTER,
+    SULFATE_ESTER_O,
+    SULFATE_S,
+    SULFATE_TERMINAL_O,
+    charmm36_bondtype_exists,
+    check_fucoidan_sulfate_charmm36_types,
     parse_itp_charges,
+    parse_itp_typed_atoms,
     parse_pdb_residues,
     validate_bundled_templates,
 )
@@ -144,6 +157,37 @@ def test_bundled_templates_residue_counts_and_charges():
     assert FUCOIDAN_RESNAME in fuc["pdb"]["residue_names"]
     sep = result["details"]["com_separation_nm"]
     assert 0.8 <= sep <= 1.5
+
+
+def test_fucoidan_sulfate_uses_charmm36_carb_types():
+    for name in ("fucoidan_12.itp", "fucoidan_12_alt_sulfation.itp"):
+        path = TEMPLATES_DIR / name
+        text = path.read_text(encoding="utf-8")
+        assert BANNED_CGENFF_SULFATE_ESTER not in text
+        assert "SG3O1" not in text
+        atoms = parse_itp_typed_atoms(path)
+        esters = [a for a in atoms if a["name"] in {"O2", "O4"} and a["type"] == SULFATE_ESTER_O]
+        sulfurs = [a for a in atoms if a["name"] in {"S2", "S4"}]
+        terminals = [a for a in atoms if a["name"] in {"O1S", "O2S", "O3S", "O4S", "O5S", "O6S"}]
+        assert esters, f"{name} missing {SULFATE_ESTER_O} ester oxygen"
+        assert all(a["type"] == SULFATE_S for a in sulfurs)
+        assert all(a["type"] == SULFATE_TERMINAL_O for a in terminals)
+        assert len(esters) == len(sulfurs)
+        assert check_fucoidan_sulfate_charmm36_types(path) == []
+    main = parse_itp_typed_atoms(TEMPLATES_DIR / "fucoidan_12.itp")
+    assert sum(1 for a in main if a["type"] == SULFATE_ESTER_O) == 12
+    alt = parse_itp_typed_atoms(TEMPLATES_DIR / "fucoidan_12_alt_sulfation.itp")
+    assert sum(1 for a in alt if a["type"] == SULFATE_ESTER_O) == 18
+
+
+def test_charmm36_ffbonded_has_cc3161_oc30p_not_og303():
+    ready = forcefield_ready()
+    if not ready["ok"]:
+        pytest.skip("CHARMM36 cache not present")
+    ffbonded = Path(ready["path"]) / "ffbonded.itp"
+    assert ffbonded.is_file()
+    assert charmm36_bondtype_exists(ffbonded, "CC3161", SULFATE_ESTER_O)
+    assert not charmm36_bondtype_exists(ffbonded, "CC3161", BANNED_CGENFF_SULFATE_ESTER)
 
 
 def test_pdb_and_itp_are_git_tracked():

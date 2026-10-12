@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from typing import Any
 
 from tools import REPO_ROOT
 from tools.md.carb.constants import DISK_FREE_MIN_BYTES, FF_ROOT, PROTOCOL_ID
 from tools.md.carb.forcefield import ForcefieldError, ensure_forcefield, forcefield_ready, load_pin
-from tools.md.carb.templates import CarbTemplateError, validate_bundled_templates
+from tools.md.carb.templates import (
+    BANNED_CGENFF_SULFATE_ESTER,
+    SULFATE_ESTER_O,
+    CarbTemplateError,
+    charmm36_bondtype_exists,
+    validate_bundled_templates,
+)
 from tools.md.environment import check_md_environment
 
 
@@ -81,6 +88,28 @@ def doctor(*, fetch_forcefield: bool = True) -> dict[str, Any]:
     except ForcefieldError as exc:
         ff = {"ok": False, "message": str(exc), "fetched": False}
         errors.append(str(exc))
+
+    if ff.get("ok"):
+        ffbonded = Path(str(ff.get("path") or "")) / "ffbonded.itp"
+        if ffbonded.is_file():
+            has_c2_ester = charmm36_bondtype_exists(ffbonded, "CC3161", SULFATE_ESTER_O)
+            has_cgenff_gap = charmm36_bondtype_exists(
+                ffbonded, "CC3161", BANNED_CGENFF_SULFATE_ESTER
+            )
+            ff["c2_sulfate_bond"] = {
+                "ok": has_c2_ester,
+                "cc3161_oc30p": has_c2_ester,
+                "cc3161_og303": has_cgenff_gap,
+            }
+            if not has_c2_ester:
+                errors.append(
+                    f"CHARMM36 ffbonded.itp lacks CC3161–{SULFATE_ESTER_O} "
+                    "(required for sulfated fucose C2/C4 ester)"
+                )
+            if has_cgenff_gap:
+                warnings.append(
+                    f"CHARMM36 unexpectedly lists CC3161–{BANNED_CGENFF_SULFATE_ESTER}"
+                )
 
     if not env.get("gmx"):
         warnings.append(

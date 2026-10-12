@@ -34,9 +34,11 @@ T_HO = "HCP1"
 T_HC = "HCA1"
 T_H6G = "HCA2"
 T_H6F = "HCA3"
-T_OS = "OG303"  # sulfate ester oxygen
-T_S = "SG3O1"  # sulfate -1 sulfur
-T_OSU = "OG2P1"  # sulfate terminal =O
+# Carbohydrate CHARMM36 methylsulfate types (par_all36_carb), not CGenFF.
+# CC3161–OG303 has no bond in ffbonded.itp; C2/C4 ester oxygen must be OC30P.
+T_OS = "OC30P"  # sulfate ester oxygen (C–O–S)
+T_S = "SC"  # sulfate -1 sulfur
+T_OSU = "OC2DP"  # sulfate terminal =O
 
 MASS = {
     T_C1: 12.011,
@@ -569,7 +571,10 @@ def main() -> None:
         molname="Fucoidan12",
         atoms=fuc_atoms,
         bonds=fuc_bonds,
-        comment="12 x alpha-L-Fucp, alt 1-3/1-4, C2 sulfate x12. Net charge -12.",
+        comment=(
+            "12 x alpha-L-Fucp, alt 1-3/1-4, C2 sulfate x12. Net charge -12. "
+            "Sulfate ester OC30P-SC-OC2DP (not CGenFF OG303-SG3O1)."
+        ),
     )
     write_pdb(
         TEMPLATES / "fucoidan_12_alt_sulfation.pdb",
@@ -587,7 +592,10 @@ def main() -> None:
         molname="Fucoidan12Alt",
         atoms=alt_atoms,
         bonds=alt_bonds,
-        comment="12 x alpha-L-Fucp, alt 1-3/1-4, C2 x12 + C4(even) x6. Net charge -18.",
+        comment=(
+            "12 x alpha-L-Fucp, alt 1-3/1-4, C2 x12 + C4(even) x6. Net charge -18. "
+            "Sulfate ester OC30P-SC-OC2DP (not CGenFF OG303-SG3O1)."
+        ),
     )
 
     (TEMPLATES / "system.top").write_text(
