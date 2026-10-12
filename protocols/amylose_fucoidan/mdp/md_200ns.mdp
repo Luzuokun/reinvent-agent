@@ -1,0 +1,44 @@
+; Human-written carb production MD (200 ns, continuation after NPT).
+; nsteps=100000000 * dt=0.002 ps = 200000 ps = 200 ns.
+; NOT the default protocol — must be selected as production_200ns plus --approve-md.
+; Do not generate or replace this file from model output.
+; Allowlisted overrides only: nsteps, dt, ref_t (scalars). Never emit a full mdp.
+title                   = Amylose-26 Fucoidan-12 200 ns production
+integrator              = md
+nsteps                  = 100000000
+dt                      = 0.002
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 5000
+nstlog                  = 5000
+nstxout-compressed      = 5000
+compressed-x-grps       = System
+continuation            = yes
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+cutoff-scheme           = Verlet
+ns_type                 = grid
+nstlist                 = 10
+rvdw                    = 1.2
+rvdw-switch             = 1.0
+vdw-modifier            = force-switch
+DispCorr                = No
+rcoulomb                = 1.2
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau_t                   = 1.0
+ref_t                   = 368
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau_p                   = 5.0
+ref_p                   = 1.0
+compressibility         = 4.5e-5
+pbc                     = xyz
+gen_vel                 = no
+energygrps              = Amylose Fucoidan

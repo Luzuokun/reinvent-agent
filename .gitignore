@@ -53,6 +53,11 @@ projects/**/input/md/*.itp
 !projects/demo_project/input/md/system.top
 *.chkpt
 
+# Pinned CHARMM36 tree (fetched by python -m tools.md.carb doctor/prepare)
+forcefields/charmm36/**
+!forcefields/charmm36/.gitkeep
+forcefields/*.tgz
+
 # OS / editor
 .DS_Store
 .idea/

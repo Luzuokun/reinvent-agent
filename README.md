@@ -3,6 +3,11 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
+**v0.12** adds an **Amylose–fucoidan MD protocol**
+(`python -m tools.md.carb doctor|prepare|run|report`), isolated from EGFR
+`--prepare-complex`. Bundled oligomer templates, pinned CHARMM36, short
+EM–NVT–NPT default; 200 ns only with an explicit protocol plus `--approve-md`.
+See [docs/amylose-fucoidan-md.md](docs/amylose-fucoidan-md.md).
 **v0.11 scope:** same pipeline as v0.10, plus an **independent PubMed
 literature tool** (`python -m tools.literature`) that returns only entries
 with URL and/or PMID (or DOI). Missing network is a loud failure, not fake
@@ -301,6 +306,21 @@ Without `--approve-md` the module checks paths, env, and materializes mdp
 files and does **not** launch `gmx`. `--approve-run` / `--approve-dock`
 never start MD.
 
+### Amylose–fucoidan protocol (`python -m tools.md.carb`)
+
+Sugar–sugar protocol, **not** EGFR protein–ligand prep. Colleague three-step
+guide: [docs/amylose-fucoidan-md.md](docs/amylose-fucoidan-md.md).
+
+```bash
+python -m tools.md.carb doctor
+python -m tools.md.carb prepare --project projects/amylose_fucoidan
+python -m tools.md.carb run --project projects/amylose_fucoidan --approve-md --yes
+python -m tools.md.carb report --project projects/amylose_fucoidan
+```
+
+Default run is short EM+NVT+NPT. `production_200ns` is 200 ns × 3 replicas
+and must be named explicitly. mdp stays human-written.
+
 ### Independent literature (`python -m tools.literature`)
 
 Not a Planner/Executor/MCP step. Separate `--approve-literature`. Queries
@@ -513,7 +533,10 @@ Run from the repo root with `conda activate reinvent4`.
 13. MD is `python -m tools.md` with `--approve-md`. mdp files are human
     templates; the model cannot emit a full mdp. Production 100 ns is not
     the default and is not launched by this module.
-14. Literature is `python -m tools.literature` with `--approve-literature`.
+14. The amylose–fucoidan protocol is `python -m tools.md.carb` (not EGFR
+    `--prepare-complex`). Default is short EM–NVT–NPT; 200 ns requires
+    `--protocol production_200ns` plus `--approve-md`.
+15. Literature is `python -m tools.literature` with `--approve-literature`.
     It returns only sourced entries and does not write papers. Missing
     network is a loud failure. Handbook mapping is
     `python -m tools.handbook_map` (ids only; no copied tutorials).
@@ -530,11 +553,12 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / docking / md / literature / handbook_map / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / handbook_map / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets and GROMACS mdp templates (never model-authored)
-projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL)
-docs/            Phase design notes (literature.md, handbook-tools.md, md.md, docking.md, …)
+protocols/       Sugar–sugar MD protocol packs (amylose_fucoidan templates + mdp)
+projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL, amylose_fucoidan)
+docs/            Phase design notes (amylose-fucoidan-md.md, literature.md, handbook-tools.md, md.md, docking.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

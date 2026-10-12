@@ -15,6 +15,16 @@ ALLOWED_GMX_SUBCOMMANDS: tuple[str, ...] = (
     "editconf",
     "solvate",
     "genion",
+    "gyrate",
+    "hbond",
+    "sasa",
+    "distance",
+    "energy",
+    "mindist",
+    "sham",
+    "trjconv",
+    "make_ndx",
+    "convert-tpr",
 )
 ALLOWED_ACPYPE_BINARIES: tuple[str, ...] = ("acpype",)
 ALLOWED_OBABEL_BINARIES: tuple[str, ...] = ("obabel", "obabel3")
@@ -271,9 +281,12 @@ def build_genion_command(
     tpr: str | Path,
     gro: str | Path,
     top: str | Path,
+    conc: float | None = None,
+    pname: str = "NA",
+    nname: str = "CL",
 ) -> list[str]:
     gmx = normalize_gmx_executable(executable)
-    return [
+    cmd = [
         gmx,
         "genion",
         "-s",
@@ -283,11 +296,17 @@ def build_genion_command(
         "-p",
         _require_file_arg(top, what="top"),
         "-pname",
-        "NA",
+        str(pname),
         "-nname",
-        "CL",
+        str(nname),
         "-neutral",
     ]
+    if conc is not None:
+        salt = float(conc)
+        if salt < 0.0 or salt > 1.0:
+            raise MdCommandError(f"genion -conc must be 0–1 M; got {conc!r}")
+        cmd.extend(["-conc", f"{salt:.2f}"])
+    return cmd
 
 
 def build_acpype_command(

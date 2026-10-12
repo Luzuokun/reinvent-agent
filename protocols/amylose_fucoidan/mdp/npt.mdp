@@ -1,0 +1,43 @@
+; Human-written carb short NPT after NVT (smoke-test default 368 K).
+; Protocol: amylose26_fucoidan12. Not the 200 ns production template.
+; Do not generate or replace this file from model output.
+; Allowlisted overrides: nsteps, dt, ref_t (scalars only).
+
+integrator              = md
+nsteps                  = 500
+dt                      = 0.001
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 50
+nstlog                  = 50
+nstxout-compressed      = 50
+compressed-x-grps       = System
+continuation            = yes
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+cutoff-scheme           = Verlet
+ns_type                 = grid
+nstlist                 = 10
+rvdw                    = 1.2
+rvdw-switch             = 1.0
+vdw-modifier            = force-switch
+DispCorr                = No
+rcoulomb                = 1.2
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+tcoupl                  = V-rescale
+tc-grps                 = System
+tau_t                   = 1.0
+ref_t                   = 368
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau_p                   = 5.0
+ref_p                   = 1.0
+compressibility         = 4.5e-5
+pbc                     = xyz
+gen_vel                 = no
+energygrps              = Amylose Fucoidan

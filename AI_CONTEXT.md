@@ -35,7 +35,9 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：文献独立模块 + Handbook tool-id 映射（v0.11）。** `tools/literature/` 是目录级 tool：人给 PubMed 检索式，只返回带 URL 和/或 PMID（或 DOI）的条目，写入 `<project>/output/literature/`。单独人批（`--approve-literature`），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 literature / pubmed / write_paper 步骤。缺网是大声 `NETWORK FAILURE`，不编造论文。Critic 只有在 evidence JSON 里出现**带出处**的文献条目时才允许评论 PubMed /「文献表明」；编造额外 PMID 仍拒绝。Handbook（`AI-Drug-Discovery-Lab`）仍是相邻仓库：本仓只加稳定 tool id 与教程章节 ↔ tool id 对照表（`tools/handbook_map.py`），不复制教程正文。没有 LLM 写的 TOML/mdp、没有任意 shell、没有自动写论文、不引入新 Agent 框架。对接与短 MD 行为不变。
+**当前：多糖 MD 协议包（v0.12）+ 文献独立模块（v0.11）。** `python -m tools.md.carb` 是直链淀粉–岩藻多糖协议（预置模板、钉扎 CHARMM36、doctor/prepare/run/report），与 EGFR `--prepare-complex` 隔离；默认短 EM–NVT–NPT，200 ns 必须显式选择并 `--approve-md`。
+
+**v0.11：** 文献独立模块 + Handbook tool-id 映射。 `tools/literature/` 是目录级 tool：人给 PubMed 检索式，只返回带 URL 和/或 PMID（或 DOI）的条目，写入 `<project>/output/literature/`。单独人批（`--approve-literature`），**不**塞进当前 Executor 的 REINVENT 循环。Planner allowlist / MCP **不**增加 literature / pubmed / write_paper 步骤。缺网是大声 `NETWORK FAILURE`，不编造论文。Critic 只有在 evidence JSON 里出现**带出处**的文献条目时才允许评论 PubMed /「文献表明」；编造额外 PMID 仍拒绝。Handbook（`AI-Drug-Discovery-Lab`）仍是相邻仓库：本仓只加稳定 tool id 与教程章节 ↔ tool id 对照表（`tools/handbook_map.py`），不复制教程正文。没有 LLM 写的 TOML/mdp、没有任意 shell、没有自动写论文、不引入新 Agent 框架。对接与短 MD 行为不变。
 
 - `python -m tools.literature`：唯一会访问 NCBI E-utilities 的入口；预定义 HTTPS host，`shell=False`。
 - 产物只写 `output/literature/`。无出处记录直接丢弃。

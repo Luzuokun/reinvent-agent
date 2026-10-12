@@ -90,6 +90,17 @@ md:
   default_nsteps: null
   max_launch_nsteps: 10000
 
+# Independent sugar–sugar protocol. python -m tools.md.carb only.
+# Isolated from EGFR --prepare-complex. Default is short em-nvt-npt-short.
+# production_200ns requires an explicit protocol plus --approve-md.
+carb:
+  protocol_id: amylose26_fucoidan12
+  default_protocol: em-nvt-npt-short
+  default_ref_t: 368
+  default_box_d: 1.2
+  default_salt_mol: 0.15
+  production_replicas: 3
+
 # Independent of the REINVENT executor. python -m tools.literature only.
 # Network fetch still requires --approve-literature (not --approve-run).
 # Never invents papers; missing network is a loud failure.

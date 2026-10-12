@@ -1,0 +1,185 @@
+{
+  "kind": "protocol-template",
+  "disclaimer": "Protocol templates for automation smoke tests and scientific workflow wiring. Not a claim of an experimentally determined bound pose or binding mechanism.",
+  "default_template_id": "amylose26_fucoidan12",
+  "com_separation_nm": 1.2455,
+  "amylose_26": {
+    "n_residues": 26,
+    "residue_name": "AGLC",
+    "monomer": "alpha-D-Glcp",
+    "linkage": "alpha-(1->4)",
+    "conformation": "left-handed V-type helix (6-fold, rise 0.136 nm)",
+    "net_charge": 0.0,
+    "n_atoms": 549,
+    "files": {
+      "pdb": "amylose_26.pdb",
+      "gro": "amylose_26.gro",
+      "itp": "amylose_26.itp"
+    },
+    "linkages": [
+      "AGLC1.C1 - AGLC2.O4  alpha-(1->4)",
+      "AGLC2.C1 - AGLC3.O4  alpha-(1->4)",
+      "AGLC3.C1 - AGLC4.O4  alpha-(1->4)",
+      "AGLC4.C1 - AGLC5.O4  alpha-(1->4)",
+      "AGLC5.C1 - AGLC6.O4  alpha-(1->4)",
+      "AGLC6.C1 - AGLC7.O4  alpha-(1->4)",
+      "AGLC7.C1 - AGLC8.O4  alpha-(1->4)",
+      "AGLC8.C1 - AGLC9.O4  alpha-(1->4)",
+      "AGLC9.C1 - AGLC10.O4  alpha-(1->4)",
+      "AGLC10.C1 - AGLC11.O4  alpha-(1->4)",
+      "AGLC11.C1 - AGLC12.O4  alpha-(1->4)",
+      "AGLC12.C1 - AGLC13.O4  alpha-(1->4)",
+      "AGLC13.C1 - AGLC14.O4  alpha-(1->4)",
+      "AGLC14.C1 - AGLC15.O4  alpha-(1->4)",
+      "AGLC15.C1 - AGLC16.O4  alpha-(1->4)",
+      "AGLC16.C1 - AGLC17.O4  alpha-(1->4)",
+      "AGLC17.C1 - AGLC18.O4  alpha-(1->4)",
+      "AGLC18.C1 - AGLC19.O4  alpha-(1->4)",
+      "AGLC19.C1 - AGLC20.O4  alpha-(1->4)",
+      "AGLC20.C1 - AGLC21.O4  alpha-(1->4)",
+      "AGLC21.C1 - AGLC22.O4  alpha-(1->4)",
+      "AGLC22.C1 - AGLC23.O4  alpha-(1->4)",
+      "AGLC23.C1 - AGLC24.O4  alpha-(1->4)",
+      "AGLC24.C1 - AGLC25.O4  alpha-(1->4)",
+      "AGLC25.C1 - AGLC26.O4  alpha-(1->4)"
+    ]
+  },
+  "fucoidan_12": {
+    "n_residues": 12,
+    "residue_name": "AFUS",
+    "n_sulfates": 12,
+    "net_charge": -12.0,
+    "monomer": "alpha-L-Fucp",
+    "linkage": "alternating alpha-(1->3)/alpha-(1->4)",
+    "n_atoms": 279,
+    "sulfation": "C2 on all 12 residues",
+    "files": {
+      "pdb": "fucoidan_12.pdb",
+      "gro": "fucoidan_12.gro",
+      "itp": "fucoidan_12.itp"
+    },
+    "linkages": [
+      "AFUS1.C1 - AFUS2.O3  alpha-(1->3)",
+      "AFUS2.C1 - AFUS3.O4  alpha-(1->4)",
+      "AFUS3.C1 - AFUS4.O3  alpha-(1->3)",
+      "AFUS4.C1 - AFUS5.O4  alpha-(1->4)",
+      "AFUS5.C1 - AFUS6.O3  alpha-(1->3)",
+      "AFUS6.C1 - AFUS7.O4  alpha-(1->4)",
+      "AFUS7.C1 - AFUS8.O3  alpha-(1->3)",
+      "AFUS8.C1 - AFUS9.O4  alpha-(1->4)",
+      "AFUS9.C1 - AFUS10.O3  alpha-(1->3)",
+      "AFUS10.C1 - AFUS11.O4  alpha-(1->4)",
+      "AFUS11.C1 - AFUS12.O3  alpha-(1->3)"
+    ],
+    "sulfation_sites": [
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2"
+      ]
+    ]
+  },
+  "fucoidan_12_alt_sulfation": {
+    "n_residues": 12,
+    "residue_name": "AFUS",
+    "n_sulfates": 18,
+    "net_charge": -18.0,
+    "monomer": "alpha-L-Fucp",
+    "linkage": "alternating alpha-(1->3)/alpha-(1->4)",
+    "n_atoms": 297,
+    "sulfation": "C2 on all 12 residues; C4 on even residues (1->3 acceptors)",
+    "files": {
+      "pdb": "fucoidan_12_alt_sulfation.pdb",
+      "gro": "fucoidan_12_alt_sulfation.gro",
+      "itp": "fucoidan_12_alt_sulfation.itp"
+    },
+    "linkages": [
+      "AFUS1.C1 - AFUS2.O3  alpha-(1->3)",
+      "AFUS2.C1 - AFUS3.O4  alpha-(1->4)",
+      "AFUS3.C1 - AFUS4.O3  alpha-(1->3)",
+      "AFUS4.C1 - AFUS5.O4  alpha-(1->4)",
+      "AFUS5.C1 - AFUS6.O3  alpha-(1->3)",
+      "AFUS6.C1 - AFUS7.O4  alpha-(1->4)",
+      "AFUS7.C1 - AFUS8.O3  alpha-(1->3)",
+      "AFUS8.C1 - AFUS9.O4  alpha-(1->4)",
+      "AFUS9.C1 - AFUS10.O3  alpha-(1->3)",
+      "AFUS10.C1 - AFUS11.O4  alpha-(1->4)",
+      "AFUS11.C1 - AFUS12.O3  alpha-(1->3)"
+    ],
+    "sulfation_sites": [
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ],
+      [
+        "C2"
+      ],
+      [
+        "C2",
+        "C4"
+      ]
+    ]
+  }
+}

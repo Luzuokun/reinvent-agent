@@ -1,0 +1,16 @@
+; Amylose-26 × Fucoidan-12 protocol topology skeleton.
+; CHARMM36 is fetched by `python -m tools.md.carb doctor|prepare` (not git-tracked).
+; Do not let a model rewrite this file.
+#include "charmm36.ff/forcefield.itp"
+#include "amylose_26.itp"
+#include "fucoidan_12.itp"
+#include "charmm36.ff/tip3p.itp"
+#include "charmm36.ff/ions.itp"
+
+[ system ]
+Amylose-26 / Fucoidan-12 protocol template
+
+[ molecules ]
+; Compound        nmols
+Amylose26         1
+Fucoidan12        1

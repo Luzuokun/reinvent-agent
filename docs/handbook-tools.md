@@ -38,6 +38,7 @@ Independent CLIs (not planner/MCP steps; not silent Executor steps):
 | `smiles_prep` | `python -m tools.smiles_prep` | local files only |
 | `docking` | `python -m tools.docking` | `--approve-dock` |
 | `md` | `python -m tools.md` | `--approve-md` |
+| `md_carb` | `python -m tools.md.carb` | `--approve-md` |
 | `literature` | `python -m tools.literature` | `--approve-literature` |
 
 There is no `write_paper`, `shell`, or `gmx` tool id.

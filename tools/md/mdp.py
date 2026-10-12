@@ -76,7 +76,7 @@ FORBIDDEN_OVERRIDE_KEYS: frozenset[str] = frozenset(
 # values stay scalars in a physical range.
 MAX_LAUNCH_NSTEPS = 10_000  # smoke-test protocols (em / nvt / em-nvt)
 MAX_LAUNCH_NSTEPS_MD2NS = 1_000_000  # 2 ns at dt=0.002 ps; still rejects 100 ns
-MAX_TEMPLATE_NSTEPS = 50_000_000  # production template value; launch still capped
+MAX_TEMPLATE_NSTEPS = 100_000_000  # 200 ns carb template; EGFR 100 ns launch still capped
 MIN_NSTEPS = 1
 MIN_DT = 0.0001
 MAX_DT = 0.004

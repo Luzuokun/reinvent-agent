@@ -158,7 +158,10 @@ they do not launch 100 ns. If `gmx` / `gmx_mpi` are on PATH, a small
 
 ## Out of scope
 
-Production-length MD, NPT continuation as a runnable protocol, MM-PBSA,
-`pdb2gmx` / solvation / ions, MCP MD tools, LLM-written
-mdp/TOML, adding `gmx` to the REINVENT Executor loop.
+Production-length MD on the EGFR protein–ligand path, MCP MD tools,
+LLM-written mdp/TOML, adding `gmx` to the REINVENT Executor loop.
 Literature search is `python -m tools.literature`, not this module.
+
+The **amylose–fucoidan** sugar–sugar protocol is a separate entry:
+`python -m tools.md.carb`. It does **not** use `--prepare-complex`.
+See [amylose-fucoidan-md.md](amylose-fucoidan-md.md).

@@ -1,0 +1,18 @@
+{
+  "name": "charmm36-jul2022",
+  "description": "MacKerell Lab CHARMM36 GROMACS port, July 2022 (carbohydrate-capable).",
+  "url": "https://mackerell.umaryland.edu/download.php?filename=CHARMM_ff_params_files/charmm36-jul2022.ff.tgz",
+  "sha256": "9f31db8502852bc8fcf36497c27db14f1b6509b33701e7cafc2187840b7d2f09",
+  "filename": "charmm36-jul2022.ff.tgz",
+  "extracts_to": "charmm36-jul2022.ff",
+  "alias": "charmm36.ff",
+  "size_bytes": 1105332,
+  "required_files": [
+    "forcefield.itp",
+    "tip3p.itp",
+    "ions.itp",
+    "carb.rtp",
+    "ffnonbonded.itp",
+    "ffbonded.itp"
+  ]
+}
