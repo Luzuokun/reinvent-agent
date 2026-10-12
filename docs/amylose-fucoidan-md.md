@@ -1,89 +1,121 @@
-# 直链淀粉–岩藻多糖 MD（同事三步）
+# 直链淀粉–岩藻多糖 MD（同事上手）
 
-协议 ID：`amylose26_fucoidan12`。**主入口是独立 CLI**
-`python -m tools.md.carb`（自动化请用这个），**不是** EGFR 蛋白–配体的
-`python -m tools.md --prepare-complex`。不会写命令的同事可另装可选依赖，用本机
-`python -m tools.md.carb.ui` 点选（见文末）。
+协议 ID：`amylose26_fucoidan12`。给**第一次用、不写代码**的同事：从建环境到短烟测。
 
-mdp 只来自人写模板；可改的标量仅限 `nsteps`、`dt`、`ref_t`、`salt_mol`、
-`box_d`、`n_replicas`。模型不能写整份 mdp，也不能改 integrator / 约束 /
-力场。默认协议是短 **EM→NVT→NPT** 烟测，**不会**启动 200 ns。
+**主入口是本机 UI**：`python -m tools.md.carb.ui`（点选 Doctor / Prepare / Run / Report）。  
+CLI（`python -m tools.md.carb …`）留给自动化/脚本，文末可选。  
+**不是** EGFR 蛋白–配体的 `python -m tools.md --prepare-complex`。
 
-预置坐标/拓扑是协议模板（自动化烟测 + 工作流接线），不是晶体结构，也不是
-「已证明结合机制」。
+预置坐标/拓扑在仓库里已打包（`protocols/amylose_fucoidan/templates/`），是协议模板，**不是**晶体结构，也不是「已证明结合机制」。mdp 只来自人写模板；默认短 **EM→NVT→NPT** 烟测，**不会**启动 200 ns。
 
-## 0. 一次环境
+---
 
-`gmx`（或 `gmx_mpi`）需已在 `PATH`。本模块从不 `pip`/`conda` 安装
-GROMACS。CHARMM36 由 doctor/prepare 按钉扎 URL+sha256 拉到
-`forcefields/charmm36/`（gitignore）。缓存在时 doctor 可离线。
+## 1. 克隆仓库
 
 ```bash
-conda activate reinvent4   # 或你的 GROMACS 环境
-cd /path/to/reinvent-agent
+git clone <本仓库 URL>
+cd reinvent-agent
 ```
 
-## 1. doctor — 检查并拉齐力场
+已有仓库则 `cd` 到仓库根目录即可。
+
+---
+
+## 2. 新建 conda / mamba 环境（先 create，不要假设已有）
+
+大多数人**还没有** `reinvent4` 环境。为多糖 MD 单独建一个即可（不必复用 REINVENT 环境）：
+
+```bash
+# conda 或 mamba 均可
+conda create -n reinvent-agent-carb python=3.11 -y
+conda activate reinvent-agent-carb
+```
+
+---
+
+## 3. 安装本仓库包 + UI 依赖
+
+仍在仓库根目录、已 `conda activate`：
+
+```bash
+pip install -e .
+pip install '.[ui]'
+# 等价：pip install -r requirements.txt && pip install -r requirements-ui.txt
+```
+
+---
+
+## 4. GROMACS（`gmx`）— 与 conda 无关
+
+本机 **`gmx`（或 `gmx_mpi`）通常已在系统 `PATH` 上**，由机房/本机单独安装，**独立于 conda**。  
+本模块**不会**、也**不要求**你在 conda 里再装一遍 GROMACS。
+
+自己先确认：
+
+```bash
+which gmx    # 或 which gmx_mpi
+gmx --version
+```
+
+找不到时：找本机管理员把系统 GROMACS 加进 `PATH`（例如 `source /usr/local/gromacs/bin/GMXRC`）。  
+**不要**默认 `conda install gromacs`；只有你明确知道自己要在环境里另装时才可选。
+
+CHARMM36 力场由 `doctor` / `prepare` 按钉扎 URL+sha256 拉到 `forcefields/charmm36/`（gitignore）；缓存在时可离线。
+
+---
+
+## 5. doctor — 检查环境（含 PATH 上的 `gmx`）
 
 ```bash
 python -m tools.md.carb doctor
 ```
 
-会检查：`gmx`、可选 GPU、磁盘、入库的 Amylose-26 / Fucoidan-12
-残基数与电荷、钉扎 CHARMM36。缺力场则拉取并校验 sha256；校验失败会大声退出，
-不换源。
+会检查：`gmx` 是否在 PATH、可选 GPU、磁盘、入库模板（Amylose-26 / Fucoidan-12 残基数与电荷）、钉扎 CHARMM36。缺力场则拉取并校验；校验失败会退出，不换源。
 
-## 2. prepare — 用预置模板组体系
+---
 
-```bash
-python -m tools.md.carb prepare \
-  --project projects/amylose_fucoidan
-```
-
-默认模板：26×α-D-Glc（α-(1→4)，左手螺旋）+ 12×α-L-Fuc（交替
-α-(1→3)/α-(1→4)，全部 C2 硫酸化，净电荷 −12），初始质心距离
-0.8–1.5 nm，盒缓冲 1.2 nm，0.15 M NaCl。产物写在
-`<project>/input/md/`。
-
-只检查不写：
+## 6. 启动 UI（推荐）
 
 ```bash
-python -m tools.md.carb prepare \
-  --project projects/amylose_fucoidan \
-  --dry-run
+python -m tools.md.carb.ui
 ```
 
-可选标量：`--box-d`、`--salt-mol`。第二套硫酸化分布：
+浏览器打开提示的本地地址（默认只绑 `127.0.0.1`，无账号、无云端）。按页签顺序：
+
+1. **Doctor** — 再确认一遍  
+2. **Prepare** — 默认项目 `projects/amylose_fucoidan`，默认模板 `amylose26_fucoidan12`（也可选 `amylose26_fucoidan12_alt`）。产物在 `<project>/input/md/`  
+3. **Run** — 默认协议 `em-nvt-npt-short`（秒–分钟级）。**Approve MD 默认关**；不勾选只物化 mdp、不启动 `gmx`。勾选后才会真跑  
+4. **Report** — 报告在 `output/carb/`（RMSD、Rg、COM、hbond、SASA 等）。没有轨迹不会编造；没有 `gmx_MMPBSA` 会标 **SKIPPED**
+
+**HITL（人为确认）：**
+
+- Approve MD：**默认关闭**  
+- 选 `production_200ns` 时还要额外勾选 **Confirm 200 ns**（默认关）；切换到 200 ns 时 Approve MD 会被打回关  
+- 失败或跳过时**不编造轨迹 / ΔG**
+
+烟测数字不得写成结合机制已证明。
+
+---
+
+## 7. 生产 200 ns（必须显式选择；日常勿用）
+
+人写模板：`protocols/amylose_fucoidan/mdp/md_200ns.mdp`（200 ns，默认 368 K；三平行种子 101/202/303）。作业状态：`output/carb/job_status.json`。
+
+仅在 UI 里选协议 `production_200ns`，并同时勾选 **Approve MD** + **Confirm 200 ns**。  
+或用下面可选 CLI（同样要 `--approve-md`）。
+
+---
+
+## 可选：CLI（自动化）
 
 ```bash
-python -m tools.md.carb prepare \
-  --project projects/amylose_fucoidan \
-  --template amylose26_fucoidan12_alt
+python -m tools.md.carb doctor
+python -m tools.md.carb prepare --project projects/amylose_fucoidan
+python -m tools.md.carb run --project projects/amylose_fucoidan --approve-md --yes
+python -m tools.md.carb report --project projects/amylose_fucoidan
 ```
 
-## 3. run + report — 短烟测，再出报告
-
-```bash
-python -m tools.md.carb run \
-  --project projects/amylose_fucoidan \
-  --approve-md --yes
-
-python -m tools.md.carb report \
-  --project projects/amylose_fucoidan
-```
-
-没有 `--approve-md` 时只物化 mdp、不启动 `gmx`。默认协议
-`em-nvt-npt-short`（秒–分钟级）。报告在 `output/carb/`：RMSD、Rg、COM、
-hbond、SASA；有轨迹时再加 FEL、接触热图、能量组分解。本机没有
-`gmx_MMPBSA` 时报告会标明 **SKIPPED**，不编造 ΔG。
-
-烟测/demo 数字不得写成结合机制已证明。
-
-## 生产 200 ns（必须显式选择）
-
-人写模板 `protocols/amylose_fucoidan/mdp/md_200ns.mdp`
-（`nsteps=100000000`，`dt=0.002` → 200 ns，默认 368 K）。三平行种子
-101/202/303。作业状态在 `output/carb/job_status.json`。失败不编造轨迹。
+没有 `--approve-md` 时只物化 mdp、不启动 `gmx`。200 ns：
 
 ```bash
 python -m tools.md.carb run \
@@ -92,30 +124,26 @@ python -m tools.md.carb run \
   --approve-md --yes
 ```
 
-可选 `--gpu`（`mdrun -nb gpu`）。可选 `--n-replicas`（默认 3，上限 5）。
+可选：`--gpu`、`--n-replicas`（默认 3，上限 5）、`--box-d`、`--salt-mol`、`--dry-run`。
 
-## 可选：本机点选 UI（非编码同事）
+---
 
-CLI 仍是自动化与脚本的主入口。需要点按钮时，另装可选依赖后启动本机界面
-（默认只绑 `127.0.0.1`，无账号、无云端、不开公网分享）：
+## 打包模板在哪
 
-```bash
-pip install '.[ui]'
-# 或：pip install -r requirements-ui.txt
+| 内容 | 路径 |
+|------|------|
+| 坐标 / 拓扑模板 | `protocols/amylose_fucoidan/templates/` |
+| 人写 mdp | `protocols/amylose_fucoidan/mdp/` |
+| 项目目录 | `projects/amylose_fucoidan/` |
 
-python -m tools.md.carb.ui
-```
+---
 
-浏览器打开提示的本地地址。按钮调用与 CLI **同一套 Python 函数**
-（`doctor` / `prepare_carb` / `run_carb` / `report_carb`），不走 shell 子进程。
-**Approve MD** 是显式勾选，默认关闭。选 `production_200ns` 时还会再要求
-**Confirm 200 ns**（同样默认关），并且会把 Approve MD 打回关。
+## 不要做的事
 
-不要把它做成 SaaS，也不要加云端登录。
-
-## 不要用的命令
-
-- `python -m tools.md --prepare-complex`（EGFR 蛋白–配体，Amber/ACPYPE）
-- 把 200 ns 当默认协议
-- 让模型生成 mdp / 残基拓扑 / 任意 shell
-- 把本机 UI 暴露到公网或加云端鉴权
+- `python -m tools.md --prepare-complex`（EGFR / Amber）  
+- 假设已有 `reinvent4` 环境而不先 `conda create`  
+- 把 `gmx` 默认装进 conda（它应在系统 PATH）  
+- 把 200 ns 当默认协议  
+- 让模型生成 mdp / 残基拓扑 / 任意 shell  
+- 把本机 UI 暴露到公网或加云端鉴权  
+- 把烟测/失败结果写成已证明结合或假轨迹  
