@@ -128,6 +128,30 @@ class CriticAgent:
                 "Dry-run only: REINVENT was not executed (pass --approve-run to run)"
             )
 
+        if plan.get("approve_run") and not plan.get("skip_reinvent") and not plan.get(
+            "approve_config"
+        ):
+            if status == "PASS":
+                status = "WARNING"
+            issues.append(
+                "Run approved without --approve-config: soft HITL policy still "
+                "allows launch; record config sign-off for a complete MVP gate"
+            )
+
+        # Claim risk is highest after an approved launch. Offline dry-runs still
+        # show the HITL checklist / HTML banner without forcing Critic WARNING.
+        if (
+            plan.get("approve_run")
+            and not plan.get("skip_reinvent")
+            and not plan.get("approve_claim")
+        ):
+            if status == "PASS":
+                status = "WARNING"
+            issues.append(
+                "Claims unapproved (--approve-claim missing): treat counts as "
+                "mechanical only; not a discovery or wet-lab recommendation"
+            )
+
         if is_tl and analysis.get("ok") and analysis.get("analysis_source") == "tl_training_set":
             successful_tl = bool(
                 plan.get("approve_run")

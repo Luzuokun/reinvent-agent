@@ -77,9 +77,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="User goal text (recorded in plan/report)",
     )
     parser.add_argument(
+        "--approve-config",
+        action="store_true",
+        help=(
+            "HITL gate 1: human signed off on the project/preset reinvent.toml "
+            "identity (agents may only select a preset ID, never write TOML)"
+        ),
+    )
+    parser.add_argument(
         "--approve-run",
         action="store_true",
-        help="Explicit human approval to launch the predefined REINVENT command",
+        help="HITL gate 2: explicit human approval to launch the predefined REINVENT command",
+    )
+    parser.add_argument(
+        "--approve-claim",
+        action="store_true",
+        help=(
+            "HITL gate 3: human allows interpretive / outbound language about "
+            "this run; without it the report is mechanical counts only"
+        ),
     )
     parser.add_argument(
         "--yes",
@@ -163,10 +179,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Copy experiment CLI config from logs/runs/<id>/result.json "
             "(or 'last'). Copies project/goal/preset/scaffold/seed/"
-            "planner/critic/provider/config. Does not copy --approve-run, "
-            "--yes, or --skip-reinvent. Launch still requires --approve-run. "
-            "The executor stays single-shot; the agent will not edit TOML "
-            "or loop."
+            "planner/critic/provider/config. Does not copy --approve-config, "
+            "--approve-run, --approve-claim, --yes, or --skip-reinvent. "
+            "Launch still requires --approve-run. The executor stays "
+            "single-shot; the agent will not edit TOML or loop."
         ),
     )
     return parser
@@ -240,7 +256,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  copied: {', '.join(copied)}")
         if overridden:
             print(f"  CLI override: {', '.join(overridden)}")
-        print("  not copied: --approve-run, --yes, --skip-reinvent")
+        print(
+            "  not copied: --approve-config, --approve-run, "
+            "--approve-claim, --yes, --skip-reinvent"
+        )
         for warning in from_run_meta.get("warnings") or []:
             print(f"WARNING: {warning}")
 
@@ -250,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
             agent_config,
             project_dir=str(project_dir),
             approve_run=bool(args.approve_run),
+            approve_config=bool(args.approve_config),
+            approve_claim=bool(args.approve_claim),
         )
     except (LLMPlannerError, PlanValidationError) as exc:
         print(f"\nERROR: {exc}")
@@ -290,6 +311,12 @@ def main(argv: list[str] | None = None) -> int:
             approve_run = False
         plan["approve_run"] = approve_run
 
+    from tools.hitl_checklist import attach_hitl_to_plan, evaluate_hitl_gates
+
+    plan["approve_config"] = bool(args.approve_config)
+    plan["approve_claim"] = bool(args.approve_claim)
+    attach_hitl_to_plan(plan)
+
     print("\n[Planning Agent]")
     planner_name = plan.get("planner") or "deterministic"
     print(f"Planner: {planner_name}")
@@ -304,6 +331,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Scaffold: {plan['scaffold_path']}")
     for note in plan.get("notes") or []:
         print(f"Note:  {note}")
+
+    hitl = plan.get("hitl") or evaluate_hitl_gates(plan)
+    print("\n[HITL gates]")
+    print(hitl.get("summary"))
+    for gate in hitl.get("gates") or []:
+        mark = "OK" if gate.get("approved") else "PENDING"
+        print(f"  [{mark}] {gate.get('title')} ({gate.get('cli')})")
+    if hitl.get("warn_run_without_config"):
+        print(
+            "WARNING: --approve-run without --approve-config "
+            "(soft policy: launch still allowed; harden later if desired)."
+        )
 
     executor = ExecutionAgent(agent_config=agent_config)
     print("\n[Execution Agent]")
@@ -458,8 +497,14 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Wrote run artefact %s", result_path)
     logger.info("Wrote summary %s", summary_path)
     print(f"Result: {result_path}")
-    print("\nTo copy this config after reading the report (still needs --approve-run):")
-    print(f"  python main.py --from-run {run_dir.name} --approve-run")
+    print(
+        "\nTo copy this config after reading the report "
+        "(still needs HITL flags; none are copied):"
+    )
+    print(
+        f"  python main.py --from-run {run_dir.name} "
+        "--approve-config --approve-run --approve-claim"
+    )
 
     _banner("DONE")
     return exit_code
@@ -471,6 +516,8 @@ def _create_plan(
     *,
     project_dir: str,
     approve_run: bool,
+    approve_config: bool = False,
+    approve_claim: bool = False,
 ) -> dict:
     planner_cfg = agent_config.get("planner") or {}
     mode = args.planner or planner_cfg.get("mode") or "deterministic"
@@ -489,7 +536,7 @@ def _create_plan(
     else:
         planner = PlannerAgent()
 
-    return planner.create_plan(
+    plan = planner.create_plan(
         args.goal,
         project_dir=project_dir,
         approve_run=approve_run,
@@ -497,6 +544,11 @@ def _create_plan(
         preset_id=getattr(args, "preset", None),
         scaffold_path=getattr(args, "scaffold", None),
     )
+    # HITL gates are CLI-owned; planners must not invent them.
+    plan["approve_config"] = bool(approve_config)
+    plan["approve_claim"] = bool(approve_claim)
+    plan["approve_run"] = bool(approve_run)
+    return plan
 
 
 def _review_with_critic(
