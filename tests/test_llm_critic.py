@@ -17,6 +17,7 @@ PASSING_RESULTS = {
     "plan": {
         "approve_run": False,
         "skip_reinvent": True,
+        "approve_claim": True,
         "steps": ["analyze_molecules", "critic_review"],
         "planner": "deterministic",
         "planner_fallback": False,

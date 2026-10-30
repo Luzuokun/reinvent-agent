@@ -15,7 +15,13 @@ REPO = Path(__file__).resolve().parent.parent
 SAMPLE_CSV = REPO / "projects" / "demo_project" / "output" / "sampled-sample.csv"
 
 PASSING_OFFLINE = {
-    "plan": {"approve_run": False, "skip_reinvent": True, "steps": ["analyze_molecules"]},
+    # Claim signed off so this fixture stays a descriptor / QED check.
+    "plan": {
+        "approve_run": False,
+        "skip_reinvent": True,
+        "approve_claim": True,
+        "steps": ["analyze_molecules"],
+    },
     "steps": {
         "analyze_molecules": {
             "ok": True,
@@ -258,7 +264,7 @@ def test_critic_warns_when_mean_qed_below_threshold():
 def test_critic_does_not_invent_qed_when_mean_missing():
     critic = CriticAgent({"critic": {"min_mean_qed": 0.7}})
     results = {
-        "plan": {"approve_run": False, "skip_reinvent": True},
+        "plan": {"approve_run": False, "skip_reinvent": True, "approve_claim": True},
         "steps": {
             "analyze_molecules": {
                 "ok": True,
