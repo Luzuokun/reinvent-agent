@@ -4,6 +4,31 @@ from __future__ import annotations
 
 from typing import Any
 
+CLAIM_UNAPPROVED_ISSUE = (
+    "Claims unapproved (--approve-claim missing): treat counts as "
+    "mechanical only; not a discovery or wet-lab recommendation"
+)
+
+
+def _reinvent_claim_gate_applies(plan: dict[str, Any], steps: dict[str, Any]) -> bool:
+    """Whether a missing ``--approve-claim`` is a soft Critic warning.
+
+    In scope: an approved REINVENT launch, a dry-run (no ``--approve-run``),
+    and ``--skip-reinvent`` when this review is molecule analysis. Independent
+    docking / MD / literature payloads set ``skip_reinvent`` only to keep the
+    reinvent launch checks quiet; they are not a claim-gate subject.
+    """
+    launched = bool(plan.get("approve_run")) and not plan.get("skip_reinvent")
+    dry_run = not plan.get("approve_run") and not plan.get("skip_reinvent")
+    if launched or dry_run:
+        return True
+    if not plan.get("skip_reinvent"):
+        return False
+    if isinstance(steps.get("analyze_molecules"), dict):
+        return True
+    plan_steps = plan.get("steps") or []
+    return "analyze_molecules" in plan_steps or "run_reinvent" in plan_steps
+
 
 class CriticAgent:
     """Review workflow results and return PASS / WARNING / FAIL."""
@@ -138,19 +163,13 @@ class CriticAgent:
                 "allows launch; record config sign-off for a complete MVP gate"
             )
 
-        # Claim risk is highest after an approved launch. Offline dry-runs still
-        # show the HITL checklist / HTML banner without forcing Critic WARNING.
-        if (
-            plan.get("approve_run")
-            and not plan.get("skip_reinvent")
-            and not plan.get("approve_claim")
-        ):
+        # Soft claim gate, same shape as missing --approve-config: WARNING,
+        # never FAIL, and not HTML-banner-only. Applies to an approved launch
+        # and to dry-run / --skip-reinvent. Does not hard-require the flag.
+        if _reinvent_claim_gate_applies(plan, steps) and not plan.get("approve_claim"):
             if status == "PASS":
                 status = "WARNING"
-            issues.append(
-                "Claims unapproved (--approve-claim missing): treat counts as "
-                "mechanical only; not a discovery or wet-lab recommendation"
-            )
+            issues.append(CLAIM_UNAPPROVED_ISSUE)
 
         if is_tl and analysis.get("ok") and analysis.get("analysis_source") == "tl_training_set":
             successful_tl = bool(
