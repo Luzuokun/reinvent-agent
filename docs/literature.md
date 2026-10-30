@@ -122,7 +122,7 @@ NCBI connection.
 
 ## Out of scope
 
-ChEMBL download, arbitrary HTTP, MCP literature tools, auto-writing papers,
-adding `pubmed` to the REINVENT Executor loop, copying the Handbook into
-this repo. Docking remains `python -m tools.docking`; MD remains
-`python -m tools.md`.
+Arbitrary HTTP, MCP literature tools, auto-writing papers, adding `pubmed`
+to the REINVENT Executor loop, copying the Handbook into this repo.
+ChEMBL is a separate module (`python -m tools.chembl`). Docking remains
+`python -m tools.docking`; MD remains `python -m tools.md`.

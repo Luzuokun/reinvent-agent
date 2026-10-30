@@ -184,6 +184,12 @@ class CriticAgent:
         if literature:
             status = _review_literature(literature, issues=issues, status=status)
 
+        chembl = steps.get("chembl") if isinstance(steps.get("chembl"), dict) else None
+        if chembl is None and isinstance(results.get("chembl"), dict):
+            chembl = results["chembl"]
+        if chembl:
+            status = _review_chembl(chembl, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -382,5 +388,66 @@ def _review_literature(
 
     issues.append(
         f"Literature table present (n={sourced_n} sourced PubMed entries with URL/PMID/DOI)"
+    )
+    return status
+
+
+def _review_chembl(
+    chembl: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate ChEMBL evidence when the independent assay tool attached one.
+
+    Called only if the ChEMBL module put a ``chembl`` object on the results.
+    REINVENT-only runs never hit this branch, so IC50 / ChEMBL claims stay
+    forbidden unless that evidence is present. Rows are never invented here.
+    """
+    approved = bool(chembl.get("approved"))
+    skipped = bool(chembl.get("skipped"))
+    table_present = bool(
+        chembl.get("table_present")
+        or chembl.get("activities_csv")
+        or (isinstance(chembl.get("activities"), list) and chembl.get("activities"))
+    )
+    n_activities = int(chembl.get("n_activities") or 0)
+    errors = chembl.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "ChEMBL was not fetched (pass --approve-chembl to query the "
+            "predefined activity endpoint). No assay rows were invented."
+        )
+        return status
+
+    if chembl.get("ok") is False or errors:
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(chembl.get("message") or "ChEMBL download failed")
+        issues.append(
+            "Refusing invented SMILES/IC50 values; network failure is not an assay table."
+        )
+        return status
+
+    if not table_present:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "ChEMBL returned no activity rows for this predefined query. "
+            "Do not treat this as an assay dataset."
+        )
+        return status
+
+    query = chembl.get("query") if isinstance(chembl.get("query"), dict) else {}
+    query_id = chembl.get("query_id") or query.get("id") or "unknown"
+    n_smiles = int(chembl.get("n_with_smiles") or 0)
+    issues.append(
+        f"ChEMBL activity table present (query_id={query_id}, n={n_activities}, "
+        f"with_smiles={n_smiles})"
     )
     return status
