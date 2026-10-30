@@ -57,6 +57,9 @@ def test_critic_tl_success_without_csv_is_not_fail():
         approve_run=True,
         skip_reinvent=False,
     )
+    # Complete HITL gates so this test isolates TL training-set labeling.
+    plan["approve_config"] = True
+    plan["approve_claim"] = True
     results = {
         "plan": plan,
         "steps": {

@@ -219,18 +219,28 @@ class ExecutionAgent:
         goal: str,
         critic: dict[str, Any],
     ) -> dict[str, Any]:
+        from tools.hitl_checklist import evaluate_hitl_gates
+
         analysis = results.get("steps", {}).get("analyze_molecules", {}) or {}
         execution = results.get("steps", {}).get("run_reinvent", {}) or {}
         dry_run = bool(execution.get("skipped"))
+        plan = results.get("plan") or {}
+        hitl = plan.get("hitl") if isinstance(plan.get("hitl"), dict) else None
+        if not hitl:
+            hitl = evaluate_hitl_gates(plan)
         payload = {
             "goal": goal,
             "project": {
                 "project_dir": results.get("project_dir"),
-                "plan_steps": (results.get("plan") or {}).get("steps"),
-                "preset_id": (results.get("plan") or {}).get("preset_id"),
-                "scaffold_path": (results.get("plan") or {}).get("scaffold_path"),
+                "plan_steps": plan.get("steps"),
+                "preset_id": plan.get("preset_id"),
+                "scaffold_path": plan.get("scaffold_path"),
                 "reinvent_config": results.get("reinvent_config_path"),
+                "approve_config": plan.get("approve_config"),
+                "approve_run": plan.get("approve_run"),
+                "approve_claim": plan.get("approve_claim"),
             },
+            "hitl": hitl,
             "environment": results.get("steps", {}).get("check_environment", {}),
             "validation": results.get("steps", {}).get("validate_project", {}),
             "execution": execution,

@@ -343,7 +343,10 @@ def test_html_report_includes_from_run_hint(tmp_path: Path):
     )
     html = Path(meta["report_path"]).read_text(encoding="utf-8")
     assert "Human rerun" in html
-    assert "python main.py --from-run 20260707_070707 --approve-run" in html
+    assert (
+        "python main.py --from-run 20260707_070707 "
+        "--approve-config --approve-run --approve-claim"
+    ) in html
     assert "will not edit TOML or loop" in html
     assert "single-shot" in html
 

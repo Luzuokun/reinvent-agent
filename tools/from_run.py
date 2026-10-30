@@ -5,7 +5,8 @@ re-invoke the CLI with ``--from-run <id>``. This module reads
 ``logs/runs/<id>/result.json`` (or ``last``) and copies experiment identity
 (project, goal, preset, scaffold, seed, planner/critic/provider, config).
 
-It never copies ``--approve-run``, ``--yes``, or ``--skip-reinvent``.
+It never copies ``--approve-config``, ``--approve-run``, ``--approve-claim``,
+``--yes``, or ``--skip-reinvent``.
 It never copies TOML, argv, or shell. Launch still requires ``--approve-run``.
 """
 
@@ -41,7 +42,9 @@ COPYABLE_FIELDS: tuple[str, ...] = (
 # Never applied from a previous run, even if present in result.json.
 NEVER_COPY_FIELDS: frozenset[str] = frozenset(
     {
+        "approve_config",
         "approve_run",
+        "approve_claim",
         "yes",
         "skip_reinvent",
         "command",
@@ -51,6 +54,7 @@ NEVER_COPY_FIELDS: frozenset[str] = frozenset(
         "shell",
         "steps",
         "notes",
+        "hitl",
     }
 )
 
@@ -66,7 +70,9 @@ _FLAG_TO_FIELD: dict[str, str] = {
     "--provider": "provider",
     "--csv": "csv",
     "--skip-reinvent": "skip_reinvent",
+    "--approve-config": "approve_config",
     "--approve-run": "approve_run",
+    "--approve-claim": "approve_claim",
     "--yes": "yes",
     "--from-run": "from_run",
 }

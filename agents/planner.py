@@ -40,6 +40,11 @@ class PlannerAgent:
                 "run_reinvent will prepare the command but will not launch "
                 "without --approve-run."
             )
+        notes.append(
+            "HITL gates: --approve-config (TOML identity), --approve-run "
+            "(launch), --approve-claim (interpretive language). "
+            "None are inferred by the planner."
+        )
         if skip_reinvent:
             notes.append("REINVENT execution skipped (--skip-reinvent).")
 
@@ -60,6 +65,9 @@ class PlannerAgent:
             "goal": goal,
             "project_dir": project_dir,
             "approve_run": approve_run,
+            # CLI overlays these after create_plan; defaults keep plans explicit.
+            "approve_config": False,
+            "approve_claim": False,
             "skip_reinvent": skip_reinvent,
             "steps": steps,
             "notes": notes,

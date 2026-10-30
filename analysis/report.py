@@ -291,16 +291,60 @@ def _render_analysis(analysis: dict[str, Any]) -> str:
     )
 
 
+def _render_hitl(payload: dict[str, Any]) -> str:
+    """Three MVP gates: config → run → claim."""
+    from tools.hitl_checklist import claim_banner_text, evaluate_hitl_gates
+
+    hitl = payload.get("hitl") if isinstance(payload.get("hitl"), dict) else None
+    if not hitl:
+        planish = payload.get("project") if isinstance(payload.get("project"), dict) else {}
+        hitl = evaluate_hitl_gates(
+            {
+                "approve_config": planish.get("approve_config"),
+                "approve_run": planish.get("approve_run"),
+                "approve_claim": planish.get("approve_claim"),
+                "skip_reinvent": payload.get("dry_run"),
+            }
+        )
+
+    rows = []
+    for gate in hitl.get("gates") or []:
+        mark = "approved" if gate.get("approved") else "pending"
+        note = gate.get("note") or gate.get("meaning") or ""
+        rows.append(
+            "<tr>"
+            f"<th>{_esc(gate.get('title'))}</th>"
+            f"<td><span class='gate {mark}'>{_esc(mark)}</span> "
+            f"<code>{_esc(gate.get('cli'))}</code><br/>"
+            f"<span class='muted'>{_esc(note)}</span></td>"
+            "</tr>"
+        )
+    table = "<table class='kv'>" + "".join(rows) + "</table>"
+    summary = f"<p>{_esc(hitl.get('summary'))}</p>"
+    policy = (
+        "<p class='muted'>Soft policy: launch still hard-requires only "
+        "<code>--approve-run</code>. Config and claim gates are recorded and "
+        "warned until the PI hardens them.</p>"
+    )
+    return summary + table + policy
+
+
 def _render_rerun(payload: dict[str, Any]) -> str:
     """HITL rerun instructions. The agent never edits TOML or loops."""
     run_id = payload.get("run_id")
     from_run = payload.get("from_run") if isinstance(payload.get("from_run"), dict) else {}
     if isinstance(run_id, str) and run_id.strip():
         rid = run_id.strip()
-        cmd = f"python main.py --from-run {rid} --approve-run"
+        cmd = (
+            f"python main.py --from-run {rid} "
+            "--approve-config --approve-run --approve-claim"
+        )
         id_note = f"<p>This run id: <code>{_esc(rid)}</code></p>"
     else:
-        cmd = "python main.py --from-run <id> --approve-run"
+        cmd = (
+            "python main.py --from-run <id> "
+            "--approve-config --approve-run --approve-claim"
+        )
         id_note = (
             "<p class='muted'>Run id is the UTC folder name under "
             "<code>logs/runs/</code>.</p>"
@@ -323,9 +367,10 @@ def _render_rerun(payload: dict[str, Any]) -> str:
         "numbers look wrong. The agent will not edit TOML or loop.</p>"
         f"{id_note}"
         f"<pre>{_esc(cmd)}</pre>"
-        "<p class='muted'><code>--approve-run</code> is never copied from a "
-        "previous run. Add <code>--yes</code> only for non-interactive "
-        "approval.</p>"
+        "<p class='muted'>HITL flags "
+        "(<code>--approve-config</code>, <code>--approve-run</code>, "
+        "<code>--approve-claim</code>, <code>--yes</code>) are never copied "
+        "from a previous run.</p>"
         + extra
     )
 
@@ -355,7 +400,27 @@ def _render_html(payload: dict[str, Any]) -> str:
     )
     csv_path = (analysis or {}).get("csv_path") if isinstance(analysis, dict) else None
 
-    banner = ""
+    from tools.hitl_checklist import claim_banner_text, evaluate_hitl_gates
+
+    hitl = payload.get("hitl") if isinstance(payload.get("hitl"), dict) else None
+    if not hitl:
+        planish = project if isinstance(project, dict) else {}
+        hitl = evaluate_hitl_gates(
+            {
+                "approve_config": planish.get("approve_config"),
+                "approve_run": planish.get("approve_run"),
+                "approve_claim": planish.get("approve_claim"),
+                "skip_reinvent": dry_run,
+            }
+        )
+
+    banners: list[str] = []
+    claim_text = claim_banner_text(hitl)
+    if claim_text:
+        banners.append(
+            f"<div class='banner warn-banner' role='status'>"
+            f"<strong>HITL:</strong> {_esc(claim_text)}</div>"
+        )
     if analysis_source == "tl_training_set":
         csv_note = _esc(csv_path) if csv_path else "(path unavailable)"
         artefact = (analysis or {}).get("artefact_path") if isinstance(analysis, dict) else None
@@ -364,7 +429,7 @@ def _render_html(payload: dict[str, Any]) -> str:
             "Transfer learning: molecule stats below are from the training SMILES "
             f"({csv_note}), not a fresh sample from the new model.{artefact_note}"
         )
-        banner = (
+        banners.append(
             f"<div class='banner warn-banner' role='status'>"
             f"<strong>Notice:</strong> {banner_text}</div>"
         )
@@ -380,14 +445,15 @@ def _render_html(payload: dict[str, Any]) -> str:
                 "Analysis below is from an existing output file "
                 f"(not a fresh REINVENT generation): {csv_note}"
             )
-        banner = (
+        banners.append(
             f"<div class='banner warn-banner' role='status'>"
             f"<strong>Notice:</strong> {banner_text}</div>"
         )
+    banner = "".join(banners)
 
     parts = [
+        _section("HITL checklist", _render_hitl({**payload, "hitl": hitl})),
         _section("Human rerun", _render_rerun(payload)),
-
         _section("Project", _kv_table({"goal": goal, **(project if isinstance(project, dict) else {"project": project})})),
         _section("Environment", _kv_table(environment if isinstance(environment, dict) else {})),
         _section("Validation", _kv_table(validation if isinstance(validation, dict) else {})),
@@ -441,6 +507,8 @@ def _render_html(payload: dict[str, Any]) -> str:
       margin: 0 0 0.35rem;
     }}
     .subtitle {{ color: var(--muted); margin-bottom: 2rem; }}
+    .gate.approved {{ color: var(--pass); font-weight: 600; text-transform: uppercase; }}
+    .gate.pending {{ color: var(--warn); font-weight: 600; text-transform: uppercase; }}
     section {{
       background: var(--card);
       border: 1px solid var(--line);
