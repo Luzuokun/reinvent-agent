@@ -206,7 +206,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 
 ## 6. 下一步计划 (Next steps)
 
-Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、MD 独立模块（GROMACS 短链）、以及 **文献独立模块 + Handbook tool-id 映射** 已落地。**HITL 三闸门脚手架**（`--approve-config` / `--approve-run` / `--approve-claim` + HTML checklist；软策略，仍只硬拦 run）也已落地，见 `docs/hitl-gates.md`。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
+Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、MD 独立模块（GROMACS 短链）、以及 **文献独立模块 + Handbook tool-id 映射** 已落地。**HITL 三闸门脚手架**（`--approve-config` / `--approve-run` / `--approve-claim` + HTML checklist；软策略，仍只硬拦 run）也已落地，见 `docs/hitl-gates.md`。dry-run 与 `--skip-reinvent` 缺少 `--approve-claim` 时与缺 `--approve-config` 一样是 Critic 软 WARNING（不硬拦，也不只靠 HTML banner）。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. **可选 harden**：无 `--approve-config` 时硬拦 `--approve-run`（PI 决策；一行开关）
 2. **ChEMBL 下载**（仍独立 Research tool）：预定义查询 + 人批，再调用 `smiles_prep`；不要让 LLM 发明 SQL 或 curl

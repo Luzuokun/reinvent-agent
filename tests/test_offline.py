@@ -64,6 +64,9 @@ def test_planner_and_critic_dry_run():
     )
     assert "analyze_molecules" in plan["steps"]
     assert "run_reinvent" not in plan["steps"]
+    # Healthy offline analysis stays PASS once the claim gate is signed.
+    # Missing vs present --approve-claim is covered in tests/smoke.
+    plan["approve_claim"] = True
 
     results = {
         "plan": plan,

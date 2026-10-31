@@ -112,8 +112,8 @@ def test_critic_warns_on_missing_claim_and_config_after_approved_run():
     assert "--approve-claim" in joined
 
 
-def test_critic_offline_pass_without_claim_still_ok():
-    """Offline dry-run: claim gate is checklist/banner-only unless a run launched."""
+def test_critic_offline_skip_without_claim_is_soft_warning():
+    """--skip-reinvent without --approve-claim is Critic WARNING, not FAIL."""
     results = {
         "plan": {
             "approve_run": False,
@@ -136,8 +136,9 @@ def test_critic_offline_pass_without_claim_still_ok():
         "errors": [],
     }
     verdict = CriticAgent().review(results)
-    assert verdict["status"] == "PASS"
-    assert not any("approve-claim" in i for i in verdict["issues"])
+    assert verdict["status"] == "WARNING"
+    assert any("approve-claim" in i for i in verdict["issues"])
+    assert verdict["status"] != "FAIL"
 
 
 def test_html_report_includes_hitl_section(tmp_path: Path):
