@@ -46,6 +46,7 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "literature shows",
     "literature",
     "pmid",
+    "chembl",
     "binding affinity",
     "ic50",
     "crystal structure",
@@ -78,6 +79,14 @@ LITERATURE_CLAIM_TERMS: frozenset[str] = frozenset(
         "literature shows",
         "literature",
         "pmid",
+    }
+)
+
+# These may appear only when evidence.chembl has an activity table.
+CHEMBL_CLAIM_TERMS: frozenset[str] = frozenset(
+    {
+        "chembl",
+        "ic50",
     }
 )
 
@@ -160,6 +169,9 @@ def build_evidence_summary(
     literature = steps.get("literature") if isinstance(steps.get("literature"), dict) else {}
     if not literature and isinstance(results.get("literature"), dict):
         literature = results["literature"]
+    chembl = steps.get("chembl") if isinstance(steps.get("chembl"), dict) else {}
+    if not chembl and isinstance(results.get("chembl"), dict):
+        chembl = results["chembl"]
 
     command = run.get("command")
     if not isinstance(command, list):
@@ -245,6 +257,9 @@ def build_evidence_summary(
     literature_block = _literature_block(literature)
     if literature_block:
         summary["literature"] = literature_block
+    chembl_block = _chembl_block(chembl)
+    if chembl_block:
+        summary["chembl"] = chembl_block
     return summary
 
 
@@ -347,6 +362,7 @@ def _reject_ungrounded_claims(
     docking_ok = _has_docking_table(evidence)
     md_ok = _has_md_table(evidence)
     literature_ok = _has_sourced_literature(evidence)
+    chembl_ok = _has_chembl_table(evidence)
     invented: list[str] = []
     for term in FORBIDDEN_CLAIM_TERMS:
         if term not in blob:
@@ -363,6 +379,11 @@ def _reject_ungrounded_claims(
         if term in LITERATURE_CLAIM_TERMS:
             # Need sourced URL/PMID/DOI entries, not just a literature step name.
             if not literature_ok or term not in evidence_text:
+                invented.append(term)
+            continue
+        if term in CHEMBL_CLAIM_TERMS:
+            # Need an activity table from tools.chembl, not just a chembl step name.
+            if not chembl_ok or term not in evidence_text:
                 invented.append(term)
             continue
         if term not in evidence_text:
@@ -402,6 +423,17 @@ def _has_sourced_literature(evidence: dict[str, Any]) -> bool:
     if not isinstance(literature, dict) or not literature:
         return False
     return bool(_sourced_literature_entries(literature))
+
+
+def _has_chembl_table(evidence: dict[str, Any]) -> bool:
+    chembl = evidence.get("chembl") if isinstance(evidence, dict) else None
+    if not isinstance(chembl, dict) or not chembl:
+        return False
+    return bool(
+        chembl.get("table_present")
+        or chembl.get("activities_csv")
+        or (isinstance(chembl.get("n_activities"), int) and chembl.get("n_activities") > 0)
+    )
 
 
 def _sourced_literature_entries(literature: dict[str, Any]) -> list[dict[str, str]]:
@@ -639,4 +671,40 @@ def _literature_block(value: Any) -> dict[str, Any] | None:
         "message": _truncate_text(value.get("message")),
         "errors": _truncate_str_list(value.get("errors")),
         "writes_papers": False,
+    }
+
+
+def _chembl_block(value: Any) -> dict[str, Any] | None:
+    """Include a ChEMBL summary only when the chembl module attached one.
+
+    Omitting this block keeps ChEMBL / IC50 claims forbidden. Full activity
+    rows are not copied — only counts, query id, and table presence.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    table_present = bool(
+        value.get("table_present")
+        or value.get("activities_csv")
+        or (isinstance(value.get("n_activities"), int) and int(value.get("n_activities") or 0) > 0)
+    )
+    query = value.get("query") if isinstance(value.get("query"), dict) else {}
+    return {
+        "ok": value.get("ok"),
+        "approved": value.get("approved"),
+        "skipped": value.get("skipped"),
+        "success": value.get("success"),
+        "source": "chembl",
+        "package": "chembl",
+        "modality": "assay",
+        "kind": "chembl download",
+        "table_present": table_present,
+        "n_activities": int(value.get("n_activities") or 0) if table_present else 0,
+        "n_with_smiles": int(value.get("n_with_smiles") or 0) if table_present else 0,
+        "activities_csv": value.get("activities_csv") if table_present else None,
+        "query_id": value.get("query_id") or query.get("id"),
+        "target_chembl_id": query.get("target_chembl_id"),
+        "standard_type": query.get("standard_type"),
+        "message": _truncate_text(value.get("message")),
+        "errors": _truncate_str_list(value.get("errors")),
+        "invents_rows": False,
     }

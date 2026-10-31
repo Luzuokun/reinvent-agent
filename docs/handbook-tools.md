@@ -40,8 +40,11 @@ Independent CLIs (not planner/MCP steps; not silent Executor steps):
 | `md` | `python -m tools.md` | `--approve-md` |
 | `md_carb` | `python -m tools.md.carb` | `--approve-md` |
 | `literature` | `python -m tools.literature` | `--approve-literature` |
+| `chembl` | `python -m tools.chembl` | `--approve-chembl` |
 
-There is no `write_paper`, `shell`, or `gmx` tool id.
+There is no `write_paper`, `shell`, or `gmx` tool id. ChEMBL has no Handbook
+tutorial row yet — the tool id is registered; page mapping waits for a real
+Assay chapter rather than a faked path.
 
 ## Mapping table
 
@@ -71,4 +74,4 @@ Source of truth: `tools/handbook_map.py`.
 ## Out of scope
 
 Copying the Handbook into this repo, generating tutorial Markdown with an
-LLM, adding 10 chatting agents, exposing literature/docking/MD through MCP.
+LLM, adding 10 chatting agents, exposing literature/docking/MD/ChEMBL through MCP.

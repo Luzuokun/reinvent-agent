@@ -16,8 +16,9 @@ from tools.reinvent import find_output_files, run_reinvent
 
 logger = logging.getLogger(__name__)
 
-# Docking / MD / literature live in their own modules with their own approval.
-# Naming them here refuses sneaking vina/gmx/pubmed into the REINVENT loop.
+# Docking / MD / literature / ChEMBL live in their own modules with their own
+# approval. Naming them here refuses sneaking vina/gmx/pubmed/chembl into the
+# REINVENT loop.
 INDEPENDENT_MODULE_STEPS = frozenset(
     {
         "docking",
@@ -36,6 +37,10 @@ INDEPENDENT_MODULE_STEPS = frozenset(
         "pubmed",
         "search_literature",
         "run_literature",
+        "chembl",
+        "run_chembl",
+        "download_chembl",
+        "assay",
         "write_paper",
         "write_manuscript",
     }
@@ -204,7 +209,9 @@ class ExecutionAgent:
                     "executor. Docking: python -m tools.docking (separate "
                     "--approve-dock). MD: python -m tools.md (separate "
                     "--approve-md). Literature: python -m tools.literature "
-                    "(separate --approve-literature). This loop does not write papers."
+                    "(separate --approve-literature). ChEMBL: python -m tools.chembl "
+                    "(separate --approve-chembl; predefined query ids only). "
+                    "This loop does not write papers."
                 )
 
             else:

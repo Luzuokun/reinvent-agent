@@ -109,6 +109,14 @@ literature:
   max_retmax: 50
   timeout_seconds: 20
 
+# Independent of the REINVENT executor. python -m tools.chembl only.
+# Network fetch still requires --approve-chembl (not --approve-run).
+# Query ids are a human allowlist; never invent SQL / curl / assay rows.
+chembl:
+  default_limit: 50
+  max_limit: 200
+  timeout_seconds: 30
+
 reinvent:
   default_seed: 42
   executable: reinvent

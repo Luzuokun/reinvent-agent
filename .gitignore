@@ -44,6 +44,9 @@ projects/**/output/md/**
 projects/**/output/literature/**
 !projects/**/output/literature/
 !projects/**/output/literature/.gitkeep
+projects/**/output/chembl/**
+!projects/**/output/chembl/
+!projects/**/output/chembl/.gitkeep
 projects/**/output/carb/**
 !projects/**/output/carb/
 !projects/**/output/carb/.gitkeep
