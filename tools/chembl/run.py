@@ -26,6 +26,7 @@ from tools.chembl.client import (
     rows_with_smiles,
 )
 from tools.chembl.entries import write_activities_csv, write_smiles_csv
+from tools.chembl.html_stub import write_chembl_html_stub
 from tools.chembl.queries import (
     ChemblQueryError,
     list_query_ids,
@@ -112,6 +113,7 @@ def run_chembl(
         "limit": limit_n,
         "activities_csv": None,
         "smiles_csv": None,
+        "html_stub": None,
         "smiles_prep": None,
         "table_present": False,
         "n_activities": 0,
@@ -202,6 +204,11 @@ def run_chembl(
             query_id=spec["id"],
             warnings=result["warnings"],
         )
+
+    # Optional short HTML stub only when an assay CSV is on disk (evidence).
+    stub = write_chembl_html_stub(output_dir, result=result)
+    if stub is not None:
+        result["html_stub"] = str(stub)
 
     _write_result_json(output_dir, result)
     return result

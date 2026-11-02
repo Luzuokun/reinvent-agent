@@ -43,7 +43,7 @@ Critic  (only if that chembl object is in the evidence JSON
 | `python -m tools.chembl` | Only entry that may hit ChEMBL |
 | `tools.smiles_prep` | Optional local canonicalize of `smiles.csv` (no network) |
 | Executor / planner allowlist / MCP | Unchanged: no `chembl`, no free-form download step |
-| Critic | May mention ChEMBL / IC50 only when an activity table is in evidence |
+| Critic / HTML | May mention ChEMBL / IC50 only when an activity table is in evidence; optional `chembl_stub.html` only when that CSV exists |
 
 No LLM-written TOML/mdp, no arbitrary shell, no SaaS/Web UI, no invented
 assay values. Handbook tutorials stay in
@@ -104,6 +104,8 @@ Outputs (gitignored except `.gitkeep`):
 - `output/chembl/activities.csv` — fixed assay schema
 - `output/chembl/smiles.csv` — rows that already had `canonical_smiles`
 - `output/chembl/chembl_result.json` — machine-readable result (+ Critic input)
+- `output/chembl/chembl_stub.html` — optional short HTML stub (**only** when
+  `activities.csv` exists; dry-run / network failure write no stub)
 
 ## Assay CSV schema
 
