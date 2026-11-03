@@ -35,10 +35,19 @@ STABLE_TOOL_IDS: tuple[str, ...] = (
     "literature",
     "md_carb",
     "chembl",
+    "portfolio",
 )
 
 INDEPENDENT_TOOL_IDS: frozenset[str] = frozenset(
-    {"smiles_prep", "docking", "md", "literature", "md_carb", "chembl"}
+    {
+        "smiles_prep",
+        "docking",
+        "md",
+        "literature",
+        "md_carb",
+        "chembl",
+        "portfolio",
+    }
 )
 
 # MkDocs nav paths (relative to docs/) in AI-Drug-Discovery-Lab. One row per

@@ -209,6 +209,14 @@ class CriticAgent:
         if chembl:
             status = _review_chembl(chembl, issues=issues, status=status)
 
+        portfolio = (
+            steps.get("portfolio") if isinstance(steps.get("portfolio"), dict) else None
+        )
+        if portfolio is None and isinstance(results.get("portfolio"), dict):
+            portfolio = results["portfolio"]
+        if portfolio:
+            status = _review_portfolio(portfolio, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -468,5 +476,62 @@ def _review_chembl(
     issues.append(
         f"ChEMBL activity table present (query_id={query_id}, n={n_activities}, "
         f"with_smiles={n_smiles})"
+    )
+    return status
+
+
+def _review_portfolio(
+    portfolio: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate portfolio evidence when the independent Decision tool attached one.
+
+    Soft WARNING when the shortlist is not signed. Does not invent composite
+    scores or claim wet-lab readiness.
+    """
+    approved = bool(portfolio.get("approved"))
+    skipped = bool(portfolio.get("skipped"))
+    table_present = bool(
+        portfolio.get("table_present")
+        or portfolio.get("shortlist_csv")
+        or (isinstance(portfolio.get("n_shortlisted"), int) and portfolio.get("n_shortlisted"))
+    )
+    n_shortlisted = int(portfolio.get("n_shortlisted") or 0)
+    errors = portfolio.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "Portfolio shortlist was not signed (pass --approve-portfolio to write "
+            "shortlist.csv). No modality scores were invented."
+        )
+        return status
+
+    if portfolio.get("ok") is False or errors:
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(portfolio.get("message") or "Portfolio shortlist failed")
+        issues.append(
+            "Refusing invented shortlist scores; missing input columns are not filled in."
+        )
+        return status
+
+    if not table_present or n_shortlisted <= 0:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "Portfolio shortlist is empty after filters. "
+            "Do not treat this as a synthesis-ready set."
+        )
+        return status
+
+    preset_id = portfolio.get("preset_id") or "unknown"
+    issues.append(
+        f"Portfolio shortlist present (preset_id={preset_id}, n={n_shortlisted})"
     )
     return status

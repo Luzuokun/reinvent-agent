@@ -3,6 +3,13 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
+**v0.14** adds an **independent portfolio Decision tool**
+(`python -m tools.portfolio`). Human-written weight `preset_id` only
+(`--approve-portfolio`); cross-modal shortlist from existing QED/SA/PAINS/dock/MD
+columns (missing cells skipped, never invented); writes
+`output/portfolio/shortlist.csv` + campaign one-pager + local run index
+(not CRM). No LLM scorer. Not a Planner / MCP / Executor step. See
+[docs/portfolio.md](docs/portfolio.md).
 **v0.13** adds an **independent ChEMBL assay tool**
 (`python -m tools.chembl`). Predefined `query_id` only (`--approve-chembl`);
 fixed assay CSV under `output/chembl/`; network failure is loud; never invents
@@ -385,6 +392,33 @@ python -m tools.chembl \
 Without `--approve-chembl` the module validates the query id and does
 **not** hit `www.ebi.ac.uk`. `--approve-run` never starts a ChEMBL fetch.
 
+### Independent portfolio (`python -m tools.portfolio`)
+
+Not a Planner/Executor/MCP step. Separate `--approve-portfolio`. Ranks an
+existing molecules CSV with a **human-written** weight `preset_id` (QED / SA /
+PAINS / dock / MD columns used only when present). Writes
+`output/portfolio/shortlist.csv`, a fixed-field campaign one-pager
+(靶点 / 批准协议 / 红旗 / top 分子 / 下一步), and a local run index
+(**not** CRM). No LLM scorer; missing numbers are never invented. Details:
+[docs/portfolio.md](docs/portfolio.md).
+
+```bash
+python -m tools.portfolio --list-presets
+
+python -m tools.portfolio \
+  --project projects/demo_project \
+  --molecules-csv projects/demo_project/input/portfolio/molecules.csv \
+  --preset-id balanced \
+  --target "Demo target" \
+  --protocols "fixture protocols" \
+  --red-flags "fixture only" \
+  --next-steps "PI review" \
+  --approve-portfolio --yes
+```
+
+Without `--approve-portfolio` the module validates the preset + CSV and does
+**not** write `shortlist.csv`. `--approve-run` never signs a shortlist.
+
 ### Handbook tool-id mapping (`python -m tools.handbook_map`)
 
 Stable tool ids plus a small tutorial-section ↔ tool-id table. Tutorial
@@ -564,6 +598,17 @@ Run from the repo root with `conda activate reinvent4`.
    `activities.csv` / `chembl_stub.html`; Critic `WARNING`; exit `0`. No
    invented assay rows. `python main.py` still does not query ChEMBL.
 
+11. **Portfolio dry-run (no `--approve-portfolio`)**
+   ```bash
+   python -m tools.portfolio \
+     --project projects/demo_project \
+     --molecules-csv projects/demo_project/input/portfolio/molecules.csv \
+     --preset-id balanced
+   ```
+   Expect: preset + CSV check only; **no** `shortlist.csv` / one-pager;
+   Critic `WARNING`; exit `0`. No invented modality scores.
+   `python main.py` still does not sign a shortlist.
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -601,6 +646,10 @@ Run from the repo root with `conda activate reinvent4`.
     `query_id` only; fixed assay CSV under `output/chembl/`; missing network
     is a loud failure; rows are never invented. Not a Planner / MCP /
     Executor step.
+17. Portfolio is `python -m tools.portfolio` with `--approve-portfolio`.
+    Human weight `preset_id` only; `output/portfolio/shortlist.csv` +
+    campaign one-pager + local run index (not CRM); no LLM scorer; missing
+    modality cells are never invented. Not a Planner / MCP / Executor step.
 
 ## Relation to other projects
 
@@ -614,12 +663,12 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / chembl / handbook_map / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / chembl / portfolio / handbook_map / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets and GROMACS mdp templates (never model-authored)
 protocols/       Sugar–sugar MD protocol packs (amylose_fucoidan templates + mdp)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL, amylose_fucoidan)
-docs/            Phase design notes (amylose-fucoidan-md.md, literature.md, chembl.md, handbook-tools.md, md.md, docking.md, …)
+docs/            Phase design notes (amylose-fucoidan-md.md, literature.md, chembl.md, portfolio.md, handbook-tools.md, md.md, docking.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml
