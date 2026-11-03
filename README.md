@@ -3,6 +3,11 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
+**v0.13** adds an **independent ChEMBL assay tool**
+(`python -m tools.chembl`). Predefined `query_id` only (`--approve-chembl`);
+fixed assay CSV under `output/chembl/`; network failure is loud; never invents
+rows. Critic may quote ChEMBL / IC50 only when that table is in evidence.
+Not a Planner / MCP / Executor step. See [docs/chembl.md](docs/chembl.md).
 **v0.12** adds an **Amylose–fucoidan MD protocol**
 (`python -m tools.md.carb doctor|prepare|run|report`), isolated from EGFR
 `--prepare-complex`. Bundled oligomer templates, pinned CHARMM36, short
@@ -101,9 +106,11 @@ molecule CSV.
 
 **Research vs Chemistry:** literature search is the independent tool
 `python -m tools.literature` (PubMed; sourced URL/PMID/DOI only; not a
-Planner step). Local SMILES cleaning is
-`python -m tools.smiles_prep` (no network; not a Planner step). Running the
-predefined TL TOML is the existing Chemistry / REINVENT executor.
+Planner step). Assay download is `python -m tools.chembl` (predefined
+`query_id` → fixed CSV under `output/chembl/`; not a Planner step). Local
+SMILES cleaning is `python -m tools.smiles_prep` (no network; not a Planner
+step). Running the predefined TL TOML is the existing Chemistry / REINVENT
+executor.
 
 Place the same prior used for sampling:
 
@@ -354,6 +361,30 @@ python -m tools.literature \
 Without `--approve-literature` the module checks the query and does **not**
 hit NCBI. `--approve-run` never starts a literature search.
 
+### Independent ChEMBL (`python -m tools.chembl`)
+
+Not a Planner/Executor/MCP step. Separate `--approve-chembl`. Downloads
+bioactivity rows for a **predefined** `query_id` only (human-written
+allowlist in `tools/chembl/queries.py` — no LLM SQL / curl). Fixed assay
+CSV under `<project>/output/chembl/`. Missing network is a loud
+`NETWORK FAILURE`, not fabricated SMILES/IC50 rows. The critic may mention
+ChEMBL / IC50 only when that activity table is in the evidence JSON; an
+optional short `chembl_stub.html` is written only when the CSV exists.
+Details: [docs/chembl.md](docs/chembl.md).
+
+```bash
+python -m tools.chembl --list-queries
+
+python -m tools.chembl \
+  --project projects/demo_project \
+  --query-id egfr-ic50 \
+  --limit 50 \
+  --approve-chembl --yes
+```
+
+Without `--approve-chembl` the module validates the query id and does
+**not** hit `www.ebi.ac.uk`. `--approve-run` never starts a ChEMBL fetch.
+
 ### Handbook tool-id mapping (`python -m tools.handbook_map`)
 
 Stable tool ids plus a small tutorial-section ↔ tool-id table. Tutorial
@@ -436,7 +467,7 @@ Every invocation writes:
 - `reports/report_<timestamp>.html` — self-contained HTML report (includes the
   `--from-run <id> --approve-run` command)
 
-## Acceptance checklist (8 scenarios)
+## Acceptance checklist
 
 Run from the repo root with `conda activate reinvent4`.
 
@@ -523,6 +554,16 @@ Run from the repo root with `conda activate reinvent4`.
    `WARNING`; exit `0`. No invented PMIDs. `python main.py` still does not
    search PubMed.
 
+10. **ChEMBL dry-run (no `--approve-chembl`)**
+   ```bash
+   python -m tools.chembl \
+     --project projects/demo_project \
+     --query-id egfr-ic50
+   ```
+   Expect: query-id check only; **no** ChEMBL network call; no
+   `activities.csv` / `chembl_stub.html`; Critic `WARNING`; exit `0`. No
+   invented assay rows. `python main.py` still does not query ChEMBL.
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -536,7 +577,8 @@ Run from the repo root with `conda activate reinvent4`.
    literature. Docking scores may be mentioned only when a docking table is
    in the evidence JSON. MD metrics only when an MD table is in the evidence.
    PubMed / “literature shows” only when sourced URL/PMID/DOI entries are
-   in the evidence.
+   in the evidence. ChEMBL / IC50 only when an activity table is in the
+   evidence.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
 11. `--from-run` copies CLI identity only. It never copies `--approve-run` /
@@ -555,6 +597,10 @@ Run from the repo root with `conda activate reinvent4`.
     It returns only sourced entries and does not write papers. Missing
     network is a loud failure. Handbook mapping is
     `python -m tools.handbook_map` (ids only; no copied tutorials).
+16. ChEMBL is `python -m tools.chembl` with `--approve-chembl`. Predefined
+    `query_id` only; fixed assay CSV under `output/chembl/`; missing network
+    is a loud failure; rows are never invented. Not a Planner / MCP /
+    Executor step.
 
 ## Relation to other projects
 
@@ -568,12 +614,12 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / handbook_map / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / chembl / handbook_map / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets and GROMACS mdp templates (never model-authored)
 protocols/       Sugar–sugar MD protocol packs (amylose_fucoidan templates + mdp)
 projects/        Sandboxed REINVENT projects (demo_project sampling, demo_tl TL, amylose_fucoidan)
-docs/            Phase design notes (amylose-fucoidan-md.md, literature.md, handbook-tools.md, md.md, docking.md, …)
+docs/            Phase design notes (amylose-fucoidan-md.md, literature.md, chembl.md, handbook-tools.md, md.md, docking.md, …)
 AI_CONTEXT.md    Living project context
 logs/runs/       Per-run result.json artefacts
 config/agent.yaml

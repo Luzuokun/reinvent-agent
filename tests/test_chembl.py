@@ -175,6 +175,12 @@ def test_run_chembl_mocked_writes_assay_table(tmp_path: Path):
     assert "molecule_chembl_id" in text
     assert "CHEMBL25" in text
     assert Path(result["smiles_csv"]).is_file()
+    stub = Path(result["html_stub"])
+    assert stub.is_file()
+    stub_text = stub.read_text(encoding="utf-8")
+    assert "egfr-ic50" in stub_text
+    assert "CHEMBL203" in stub_text
+    assert "activities.csv" in stub_text
 
 
 def test_run_chembl_network_failure_is_loud_not_invented(tmp_path: Path):
@@ -196,6 +202,8 @@ def test_run_chembl_network_failure_is_loud_not_invented(tmp_path: Path):
     assert result["n_activities"] == 0
     assert any("NETWORK FAILURE" in e for e in result["errors"])
     assert not (proj / "output" / "chembl" / "activities.csv").exists()
+    assert result.get("html_stub") is None
+    assert not (proj / "output" / "chembl" / "chembl_stub.html").exists()
 
 
 def test_run_chembl_empty_hits_are_not_fabricated(tmp_path: Path):
@@ -218,6 +226,8 @@ def test_run_chembl_empty_hits_are_not_fabricated(tmp_path: Path):
     assert result["table_present"] is False
     assert result["n_activities"] == 0
     assert "No assay values were invented" in result["message"]
+    assert result.get("html_stub") is None
+    assert not (proj / "output" / "chembl" / "chembl_stub.html").exists()
 
 
 def test_cli_list_queries_and_dry_run(tmp_path: Path):
@@ -231,6 +241,23 @@ def test_cli_list_queries_and_dry_run(tmp_path: Path):
         )
     mocked.assert_not_called()
     assert code == 0
+    assert not (proj / "output" / "chembl" / "activities.csv").exists()
+    assert not (proj / "output" / "chembl" / "chembl_stub.html").exists()
+
+
+def test_dry_run_without_approve_never_hits_network(tmp_path: Path):
+    """Missing --approve-chembl must not call http_get and invents no rows."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    with patch("tools.chembl.client.http_get") as mocked:
+        result = run_chembl(proj, query_id="egfr-ic50", approve=False)
+    mocked.assert_not_called()
+    assert result["skipped"] is True
+    assert result["table_present"] is False
+    assert result["n_activities"] == 0
+    assert result.get("activities") == []
+    assert result.get("html_stub") is None
+    assert not (proj / "output" / "chembl" / "activities.csv").exists()
 
 
 def test_executor_does_not_run_chembl():

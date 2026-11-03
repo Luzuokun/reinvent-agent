@@ -35,7 +35,7 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：ChEMBL assay MVP scaffold（v0.13）+ HITL 三闸门 + 多糖 MD / 文献。** `python -m tools.chembl` 是独立 Research/Assay tool：人只选预定义 `query_id`，经 `--approve-chembl` 后从 `www.ebi.ac.uk/chembl/api/data` 拉 activity 表，写入 `<project>/output/chembl/`；可选本地 `smiles_prep`。**不**进 Planner / MCP / REINVENT Executor。禁止 LLM 发明 SQL / curl / 缺失 SMILES·IC50。缺网是大声 `NETWORK FAILURE`。
+**当前：ChEMBL assay MVP + README/Critic/HTML 证据硬化（v0.13）+ HITL 三闸门 + 多糖 MD / 文献。** `python -m tools.chembl` 是独立 Research/Assay tool：人只选预定义 `query_id`，经 `--approve-chembl` 后从 `www.ebi.ac.uk/chembl/api/data` 拉 activity 表，写入 `<project>/output/chembl/`；可选本地 `smiles_prep`；有 assay CSV 时才写短 `chembl_stub.html`，Critic 仅在 evidence 有表时可引用 ChEMBL/IC50。**不**进 Planner / MCP / REINVENT Executor。禁止 LLM 发明 SQL / curl / 缺失 SMILES·IC50。缺网是大声 `NETWORK FAILURE`。README 已与 docking/literature 同级文档化 dry-run。
 
 **仍保留：** 多糖 MD 协议包（`python -m tools.md.carb`）、文献模块（`--approve-literature`）、对接 / 短 MD、HITL config/run/claim checklist（软策略；仍只硬拦 `--approve-run`）。
 
