@@ -217,6 +217,12 @@ class CriticAgent:
         if portfolio:
             status = _review_portfolio(portfolio, issues=issues, status=status)
 
+        admet = steps.get("admet") if isinstance(steps.get("admet"), dict) else None
+        if admet is None and isinstance(results.get("admet"), dict):
+            admet = results["admet"]
+        if admet:
+            status = _review_admet(admet, issues=issues, status=status)
+
         recommendation = {
             "PASS": "Workflow evidence looks consistent; human spot-check recommended.",
             "WARNING": "Human review recommended before trusting downstream conclusions.",
@@ -533,5 +539,64 @@ def _review_portfolio(
     preset_id = portfolio.get("preset_id") or "unknown"
     issues.append(
         f"Portfolio shortlist present (preset_id={preset_id}, n={n_shortlisted})"
+    )
+    return status
+
+
+def _review_admet(
+    admet: dict[str, Any],
+    *,
+    issues: list[str],
+    status: str,
+) -> str:
+    """Evaluate ADMET evidence when the independent coarse-screen tool attached one.
+
+    Soft WARNING when scores are not signed. Does not invent docking/MD/assay
+    numbers or claim clinical druglikeness.
+    """
+    approved = bool(admet.get("approved"))
+    skipped = bool(admet.get("skipped"))
+    table_present = bool(
+        admet.get("table_present")
+        or admet.get("scores_csv")
+        or (isinstance(admet.get("n_scored"), int) and admet.get("n_scored") and approved)
+    )
+    n_scored = int(admet.get("n_scored") or 0)
+    n_pass = int(admet.get("n_pass") or 0)
+    errors = admet.get("errors") or []
+
+    if skipped or not approved:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "ADMET coarse screen was not signed (pass --approve-admet to write "
+            "admet_scores.csv). No docking/MD/assay numbers were invented."
+        )
+        return status
+
+    if admet.get("ok") is False or errors:
+        status = "FAIL"
+        if errors:
+            issues.extend(str(e) for e in errors if e)
+        else:
+            issues.append(admet.get("message") or "ADMET coarse screen failed")
+        issues.append(
+            "Refusing invented ADMET scores; missing RDKit is not a descriptor table."
+        )
+        return status
+
+    if not table_present or n_scored <= 0:
+        if status == "PASS":
+            status = "WARNING"
+        issues.append(
+            "ADMET scores table is empty. "
+            "Do not treat this as a druglikeness or wet-lab claim."
+        )
+        return status
+
+    preset_id = admet.get("preset_id") or "unknown"
+    issues.append(
+        f"ADMET scores table present (preset_id={preset_id}, n={n_scored}, "
+        f"pass={n_pass}; offline RDKit rules only)"
     )
     return status

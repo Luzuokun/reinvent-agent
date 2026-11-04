@@ -49,6 +49,8 @@ FORBIDDEN_CLAIM_TERMS: tuple[str, ...] = (
     "chembl",
     "portfolio",
     "shortlist",
+    "admet",
+    "druglikeness",
     "binding affinity",
     "ic50",
     "crystal structure",
@@ -97,6 +99,14 @@ PORTFOLIO_CLAIM_TERMS: frozenset[str] = frozenset(
     {
         "portfolio",
         "shortlist",
+    }
+)
+
+# These may appear only when evidence.admet has a signed scores table.
+ADMET_CLAIM_TERMS: frozenset[str] = frozenset(
+    {
+        "admet",
+        "druglikeness",
     }
 )
 
@@ -185,6 +195,9 @@ def build_evidence_summary(
     portfolio = steps.get("portfolio") if isinstance(steps.get("portfolio"), dict) else {}
     if not portfolio and isinstance(results.get("portfolio"), dict):
         portfolio = results["portfolio"]
+    admet = steps.get("admet") if isinstance(steps.get("admet"), dict) else {}
+    if not admet and isinstance(results.get("admet"), dict):
+        admet = results["admet"]
 
     command = run.get("command")
     if not isinstance(command, list):
@@ -276,6 +289,9 @@ def build_evidence_summary(
     portfolio_block = _portfolio_block(portfolio)
     if portfolio_block:
         summary["portfolio"] = portfolio_block
+    admet_block = _admet_block(admet)
+    if admet_block:
+        summary["admet"] = admet_block
     return summary
 
 
@@ -380,6 +396,7 @@ def _reject_ungrounded_claims(
     literature_ok = _has_sourced_literature(evidence)
     chembl_ok = _has_chembl_table(evidence)
     portfolio_ok = _has_portfolio_table(evidence)
+    admet_ok = _has_admet_table(evidence)
     invented: list[str] = []
     for term in FORBIDDEN_CLAIM_TERMS:
         if term not in blob:
@@ -405,6 +422,10 @@ def _reject_ungrounded_claims(
             continue
         if term in PORTFOLIO_CLAIM_TERMS:
             if not portfolio_ok or term not in evidence_text:
+                invented.append(term)
+            continue
+        if term in ADMET_CLAIM_TERMS:
+            if not admet_ok or term not in evidence_text:
                 invented.append(term)
             continue
         if term not in evidence_text:
@@ -468,6 +489,21 @@ def _has_portfolio_table(evidence: dict[str, Any]) -> bool:
             isinstance(portfolio.get("n_shortlisted"), int)
             and portfolio.get("n_shortlisted") > 0
             and portfolio.get("approved")
+        )
+    )
+
+
+def _has_admet_table(evidence: dict[str, Any]) -> bool:
+    admet = evidence.get("admet") if isinstance(evidence, dict) else None
+    if not isinstance(admet, dict) or not admet:
+        return False
+    return bool(
+        admet.get("table_present")
+        or admet.get("scores_csv")
+        or (
+            isinstance(admet.get("n_scored"), int)
+            and admet.get("n_scored") > 0
+            and admet.get("approved")
         )
     )
 
@@ -782,4 +818,44 @@ def _portfolio_block(value: Any) -> dict[str, Any] | None:
         "invents_scores": False,
         "llm_scorer": False,
         "crm": False,
+    }
+
+
+def _admet_block(value: Any) -> dict[str, Any] | None:
+    """Include an ADMET summary only when the admet module attached one.
+
+    Omitting this block keeps ADMET / druglikeness claims forbidden. Row-level
+    SMILES / descriptor values are not copied — only counts and paths.
+    """
+    if not isinstance(value, dict) or not value:
+        return None
+    table_present = bool(
+        value.get("table_present")
+        or value.get("scores_csv")
+        or (
+            isinstance(value.get("n_scored"), int)
+            and int(value.get("n_scored") or 0) > 0
+            and value.get("approved")
+        )
+    )
+    return {
+        "ok": value.get("ok"),
+        "approved": value.get("approved"),
+        "skipped": value.get("skipped"),
+        "success": value.get("success"),
+        "source": "admet",
+        "package": "admet",
+        "modality": "admet",
+        "kind": "admet coarse screen",
+        "table_present": table_present,
+        "n_scored": int(value.get("n_scored") or 0) if table_present else 0,
+        "n_pass": int(value.get("n_pass") or 0) if table_present else 0,
+        "n_valid": int(value.get("n_valid") or 0) if table_present else 0,
+        "scores_csv": value.get("scores_csv") if table_present else None,
+        "preset_id": value.get("preset_id"),
+        "message": _truncate_text(value.get("message")),
+        "errors": _truncate_str_list(value.get("errors")),
+        "invents_scores": False,
+        "llm_scorer": False,
+        "engine": "rdkit_rules",
     }

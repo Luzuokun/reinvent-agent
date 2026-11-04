@@ -36,6 +36,7 @@ STABLE_TOOL_IDS: tuple[str, ...] = (
     "md_carb",
     "chembl",
     "portfolio",
+    "admet",
 )
 
 INDEPENDENT_TOOL_IDS: frozenset[str] = frozenset(
@@ -47,6 +48,7 @@ INDEPENDENT_TOOL_IDS: frozenset[str] = frozenset(
         "md_carb",
         "chembl",
         "portfolio",
+        "admet",
     }
 )
 
