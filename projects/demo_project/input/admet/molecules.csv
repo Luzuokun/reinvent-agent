@@ -1,0 +1,7 @@
+SMILES,ligand_id,note
+CCO,ethanol_001,demo fixture only
+c1ccccc1,benzene_002,demo fixture only
+CC(=O)Oc1ccccc1C(=O)O,aspirin_003,demo fixture only
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C,caffeine_005,demo fixture only
+CC(C)Cc1ccc(cc1)C(C)C(=O)O,ibuprofen_006,demo fixture only
+CCCCCCCCCCCCCCCC(=O)O,stearic_007,demo fixture — high MW/logP

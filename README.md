@@ -3,6 +3,12 @@
 Minimal, safe research automation around an existing REINVENT4 molecular
 generation workflow.
 
+**v0.15** adds an **independent ADMET coarse-screen tool**
+(`python -m tools.admet`). Human-written rule `preset_id` only
+(`--approve-admet`); offline RDKit / Lipinski–Veber-style filters; writes
+`output/admet/admet_scores.csv`. Never invents docking / MD / assay numbers;
+missing RDKit is loud. Not a Planner / MCP / Executor step. See
+[docs/admet.md](docs/admet.md).
 **v0.14** adds an **independent portfolio Decision tool**
 (`python -m tools.portfolio`). Human-written weight `preset_id` only
 (`--approve-portfolio`); cross-modal shortlist from existing QED/SA/PAINS/dock/MD
@@ -419,6 +425,28 @@ python -m tools.portfolio \
 Without `--approve-portfolio` the module validates the preset + CSV and does
 **not** write `shortlist.csv`. `--approve-run` never signs a shortlist.
 
+### Independent ADMET (`python -m tools.admet`)
+
+Not a Planner/Executor/MCP step. Separate `--approve-admet`. Scores an
+existing SMILES CSV with a **human-written** rule `preset_id` (offline
+RDKit descriptors + Lipinski / Veber / lead-like / QED-floor thresholds).
+Writes `output/admet/admet_scores.csv`. Never invents docking / MD / IC50
+values; missing RDKit is a loud failure. Details:
+[docs/admet.md](docs/admet.md).
+
+```bash
+python -m tools.admet --list-presets
+
+python -m tools.admet \
+  --project projects/demo_project \
+  --molecules-csv projects/demo_project/input/admet/molecules.csv \
+  --preset-id lipinski \
+  --approve-admet --yes
+```
+
+Without `--approve-admet` the module validates the preset + CSV and does
+**not** write `admet_scores.csv`. `--approve-run` never signs an ADMET table.
+
 ### Handbook tool-id mapping (`python -m tools.handbook_map`)
 
 Stable tool ids plus a small tutorial-section ↔ tool-id table. Tutorial
@@ -609,6 +637,17 @@ Run from the repo root with `conda activate reinvent4`.
    Critic `WARNING`; exit `0`. No invented modality scores.
    `python main.py` still does not sign a shortlist.
 
+12. **ADMET dry-run (no `--approve-admet`)**
+   ```bash
+   python -m tools.admet \
+     --project projects/demo_project \
+     --molecules-csv projects/demo_project/input/admet/molecules.csv \
+     --preset-id lipinski
+   ```
+   Expect: preset + CSV check only; **no** `admet_scores.csv`; Critic
+   `WARNING`; exit `0`. No invented docking / MD / assay numbers.
+   `python main.py` still does not sign an ADMET table.
+
 ## Safety
 
 1. Never execute LLM-generated shell strings.
@@ -623,7 +662,8 @@ Run from the repo root with `conda activate reinvent4`.
    in the evidence JSON. MD metrics only when an MD table is in the evidence.
    PubMed / “literature shows” only when sourced URL/PMID/DOI entries are
    in the evidence. ChEMBL / IC50 only when an activity table is in the
-   evidence.
+   evidence. ADMET / druglikeness only when an ADMET scores table is in
+   the evidence.
 9. MCP exposes the same allowlisted tools only; no shell / argv / TOML-writing tool.
 10. Experiment config is a human-written preset ID only. The model cannot emit TOML.
 11. `--from-run` copies CLI identity only. It never copies `--approve-run` /
@@ -650,6 +690,10 @@ Run from the repo root with `conda activate reinvent4`.
     Human weight `preset_id` only; `output/portfolio/shortlist.csv` +
     campaign one-pager + local run index (not CRM); no LLM scorer; missing
     modality cells are never invented. Not a Planner / MCP / Executor step.
+18. ADMET is `python -m tools.admet` with `--approve-admet`. Human rule
+    `preset_id` only; offline RDKit descriptors → `output/admet/admet_scores.csv`;
+    missing RDKit is loud; docking / MD / assay numbers are never invented.
+    Not a Planner / MCP / Executor step.
 
 ## Relation to other projects
 
@@ -663,7 +707,7 @@ Run from the repo root with `conda activate reinvent4`.
 
 ```text
 agents/          Planner + Critic (deterministic default), optional LLM layers, shared llm_client
-tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / chembl / portfolio / handbook_map / analysis / artefacts / MCP allowlist
+tools/           Validated environment / reinvent / files / smiles_prep / docking / md / md.carb / literature / chembl / portfolio / admet / handbook_map / analysis / artefacts / MCP allowlist
 analysis/        Molecule stats + HTML report
 experiments/     Human-written REINVENT presets and GROMACS mdp templates (never model-authored)
 protocols/       Sugar–sugar MD protocol packs (amylose_fucoidan templates + mdp)
