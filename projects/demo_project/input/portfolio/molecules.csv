@@ -1,0 +1,7 @@
+SMILES,ligand_id,QED,SA,PAINS,dock_score,in_md,note
+CCO,ethanol_001,0.51,1.2,clean,-4.1,False,fixture only
+c1ccccc1,benzene_002,0.45,1.0,clean,-5.2,False,fixture only
+CC(=O)Oc1ccccc1C(=O)O,aspirin_003,0.55,2.1,clean,-6.0,True,fixture only
+O=C1C=CC(=O)C=C1,quinone_004,0.40,2.5,hit,-7.5,False,PAINS fixture — should drop under drop_pains
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C,caffeine_005,0.62,2.8,clean,-5.8,True,fixture only
+CC(C)Cc1ccc(cc1)C(C)C(=O)O,ibuprofen_006,0.85,2.0,clean,-7.1,False,fixture only
