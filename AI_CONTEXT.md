@@ -35,17 +35,17 @@ Research  →  Content（handbook / 教程）  →  Agent tools  →  Research
 
 ## 2. 当前目标 (Current goal)
 
-**当前：Portfolio Decision MVP（v0.14）+ ChEMBL assay（v0.13）+ HITL 三闸门 + 多糖 MD / 文献。** `python -m tools.portfolio` 是独立 Decision tool：人只选预定义权重 `preset_id`，经 `--approve-portfolio` 后对已有分子 CSV 做跨模态确定性加权（QED/SA/PAINS/dock/MD 列有则用、缺则跳过、**不发明**数字），写入 `<project>/output/portfolio/shortlist.csv` + 固定字段战役一页卡 + 本地 `run_index.json`（**不是** CRM）。**无** LLM scorer。**不**进 Planner / MCP / REINVENT Executor。Critic 缺签字为软 WARNING；仅在 evidence 有 shortlist 表时可提 portfolio/shortlist。
+**当前：ADMET 粗筛 MVP（v0.15）+ Portfolio Decision（v0.14）+ ChEMBL assay（v0.13）+ HITL 三闸门 + 多糖 MD / 文献。** `python -m tools.admet` 是独立 ADMET tool：人只选预定义规则 `preset_id`（Lipinski / Veber / leadlike / qed-floor），经 `--approve-admet` 后对已有 SMILES CSV 做离线 RDKit 描述符 + 规则过滤，写入 `<project>/output/admet/admet_scores.csv`。**不发明**对接 / MD / assay 数字；缺 RDKit 大声失败。**无** LLM scorer。**不**进 Planner / MCP / REINVENT Executor。Critic 缺签字为软 WARNING；仅在 evidence 有 scores 表时可提 admet/druglikeness。
 
-**仍保留：** ChEMBL（`--approve-chembl`）、多糖 MD 协议包、文献、对接 / 短 MD、HITL config/run/claim checklist（软策略；仍只硬拦 `--approve-run`）。
+**仍保留：** Portfolio（`--approve-portfolio`）、ChEMBL（`--approve-chembl`）、多糖 MD 协议包、文献、对接 / 短 MD、HITL config/run/claim checklist（软策略；仍只硬拦 `--approve-run`）。
 
-- `python -m tools.portfolio --list-presets` / `--preset-id balanced`：唯一可签字 shortlist 的入口。
-- 产物只写 `output/portfolio/`（`shortlist.csv`、`campaign_one_pager.html`、`run_index.json`、`portfolio_result.json`）。
-- REINVENT 的 `check_environment` **不**探测 portfolio。
-- `--from-run` / 人写预设 / MCP / 对接 / MD / 文献 / ChEMBL 行为不变。
+- `python -m tools.admet --list-presets` / `--preset-id lipinski`：唯一可签字 ADMET scores 表的入口。
+- 产物只写 `output/admet/`（`admet_scores.csv`、`admet_result.json`）。
+- REINVENT 的 `check_environment` **不**探测 admet。
+- `--from-run` / 人写预设 / MCP / 对接 / MD / 文献 / ChEMBL / Portfolio 行为不变。
 - 安全不变量不变：没有 shell 工具，不能让模型写 `reinvent.toml` 或整份 mdp，不上 SaaS/云端 Web 鉴权。
 
-下一步（尚未做）见第 6 节——不是一次 10-agent 重写；**不做** ADMET 抢跑。
+下一步（尚未做）见第 6 节——不是一次 10-agent 重写。
 
 ---
 
@@ -202,6 +202,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 | Literature is a separate module | `--approve-literature` ≠ `--approve-run`；只返回带 URL/PMID/DOI 的条目；缺网大声失败；不写论文 |
 | ChEMBL is a separate module | `--approve-chembl` ≠ `--approve-run`；仅预定义 query_id；缺网大声失败；不发明 assay 行 |
 | Portfolio is a separate module | `--approve-portfolio` ≠ `--approve-run`；仅预定义权重 preset_id；无 LLM scorer；不发明模态数字；本地索引非 CRM |
+| ADMET is a separate module | `--approve-admet` ≠ `--approve-run`；仅预定义规则 preset_id；离线 RDKit；不发明对接/MD/assay；缺 RDKit 大声失败 |
 | Handbook mapping, not a copy | 本仓只维护稳定 tool id 与教程章节对照表；教程正文在 AI-Drug-Discovery-Lab |
 
 ---
@@ -211,7 +212,7 @@ Dry-run / 未真正跑 REINVENT 时，分析的是 **已有 CSV**（例如 `samp
 Phase 3（仓库编号的 LLM Critic）、多 provider LLM、CSV 描述符 / HTML 直方图、MCP allowlist、**CPU transfer learning demo**、人写实验预设 ID、单轮人批 `--from-run`、对接独立模块（Vina/GNINA）、MD 独立模块（GROMACS 短链）、以及 **文献独立模块 + Handbook tool-id 映射** 已落地。**HITL 三闸门脚手架**（`--approve-config` / `--approve-run` / `--approve-claim` + HTML checklist；软策略，仍只硬拦 run）也已落地，见 `docs/hitl-gates.md`。dry-run 与 `--skip-reinvent` 缺少 `--approve-claim` 时与缺 `--approve-config` 一样是 Critic 软 WARNING（不硬拦，也不只靠 HTML banner）。之后 **按模块** 考虑，而不是重写成 10 个互相聊天的 agent：
 
 1. **可选 harden**：无 `--approve-config` 时硬拦 `--approve-run`（PI 决策；一行开关）——当前仍是软 WARNING
-2. **ADMET 粗筛独立 tool**（Phase C）——对接前砍垃圾；人写阈值预设
+2. **ADMET 加深**（已有 Phase C MVP）：更多人写规则预设 / 可选离线模型权重文件（缺文件大声失败）；仍禁止发明对接/MD/assay
 3. **ChEMBL 加深**：更多人写 query_id、分子补全 SMILES、与 TL demo 接线；仍禁止 LLM SQL
 4. 用 TL 后的 checkpoint 再跑 sampling project（TL → sample 两段，仍不许模型改 TOML）
 5. 生产时长 MD / NPT / MM-PBSA（仍独立 tool，另批）
@@ -234,10 +235,10 @@ agents/executor.py         只调用预定义 tools
 agents/critic.py           确定性 Critic（默认）
 agents/llm_critic.py       可选 LLM Critic
 agents/critic_schema.py    critic JSON schema + evidence 摘要
-tools/                     environment / files / reinvent / smiles_prep / docking / md / literature / chembl / portfolio / handbook_map / analysis / artifacts / MCP allowlist
+tools/                     environment / files / reinvent / smiles_prep / docking / md / literature / chembl / portfolio / admet / handbook_map / analysis / artifacts / MCP allowlist
 analysis/                  分子统计 + HTML 报告
 experiments/               人写 REINVENT 预设 TOML 与 GROMACS mdp 模板
-projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` 与 `input/md/` 夹具
+projects/demo_project      CPU sampling；bundled `output/sampled-sample.csv`；`input/scaffold.smi`；`input/docking/` / `input/md/` / `input/admet/` 夹具
 projects/demo_tl           CPU transfer learning；bundled `input/tl_train.smi`
 config/agent.yaml          planner / critic / 路径 / 阈值
 docs/from-run.md
@@ -246,6 +247,7 @@ docs/md.md
 docs/literature.md
 docs/chembl.md
 docs/portfolio.md
+docs/admet.md
 docs/handbook-tools.md
 docs/experiment-presets.md
 docs/mcp-tools.md
@@ -352,7 +354,7 @@ Exit：Critic `PASS`/`WARNING` → 0；`FAIL` → 1；LLM hard-fail（fallback �
 - 无人值守写论文、自动“发现药物”
 - 自动 `pip/conda install`
 - 模型改写 `reinvent.toml` 或整份 mdp
-- 生产时长 GROMACS / MM-PBSA（独立模块另批）；ADMET 粗筛（Phase C，后置于 Portfolio）
+- 生产时长 GROMACS / MM-PBSA（独立模块另批）；ADMET 加深（公开 ML 权重文件可选，仍后置）
 - 把 Handbook 教程复制进本仓
 - CrewAI / LangGraph / LlamaIndex / 多 agent 对话框架
 - 把 LLM 输出当命令执行

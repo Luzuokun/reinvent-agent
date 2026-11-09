@@ -41,10 +41,12 @@ Independent CLIs (not planner/MCP steps; not silent Executor steps):
 | `md_carb` | `python -m tools.md.carb` | `--approve-md` |
 | `literature` | `python -m tools.literature` | `--approve-literature` |
 | `chembl` | `python -m tools.chembl` | `--approve-chembl` |
+| `portfolio` | `python -m tools.portfolio` | `--approve-portfolio` |
+| `admet` | `python -m tools.admet` | `--approve-admet` |
 
-There is no `write_paper`, `shell`, or `gmx` tool id. ChEMBL has no Handbook
-tutorial row yet — the tool id is registered; page mapping waits for a real
-Assay chapter rather than a faked path.
+There is no `write_paper`, `shell`, or `gmx` tool id. ChEMBL / portfolio /
+ADMET have no Handbook tutorial row yet — tool ids are registered; page
+mapping waits for a real chapter rather than a faked path.
 
 ## Mapping table
 
